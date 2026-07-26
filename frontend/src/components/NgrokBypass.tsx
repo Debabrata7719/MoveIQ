@@ -9,16 +9,13 @@ export function NgrokBypass() {
       window.fetch = async (...args) => {
         let [resource, config] = args;
         
-        // Ensure config exists
-        config = config || {};
-        
-        // Ensure headers exist
-        const headers = new Headers(config.headers || {});
-        
-        // Add the magic ngrok header to bypass the warning screen
-        headers.set("ngrok-skip-browser-warning", "true");
-        
-        config.headers = headers;
+        const urlStr = resource instanceof Request ? resource.url : String(resource || "");
+        if (urlStr.includes("ngrok")) {
+          config = config || {};
+          const headers = new Headers(config.headers || (resource instanceof Request ? resource.headers : {}));
+          headers.set("ngrok-skip-browser-warning", "true");
+          config.headers = headers;
+        }
         
         return originalFetch(resource, config);
       };

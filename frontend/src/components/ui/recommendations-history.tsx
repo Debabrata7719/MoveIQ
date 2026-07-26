@@ -108,7 +108,7 @@ export const RecommendationsHistory = ({ token }: RecommendationsHistoryProps) =
             
             for (let i = 0; i < pages.length; i++) {
                 const pageEl = pages[i] as HTMLElement;
-                const dataUrl = await htmlToImage.toPng(pageEl, { quality: 1, backgroundColor: '#ffffff', pixelRatio: 2 });
+                const dataUrl = await htmlToImage.toPng(pageEl, { quality: 1, backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true });
                 if (i > 0) pdf.addPage();
                 
                 const pdfHeight = (pageEl.offsetHeight * pdfWidth) / pageEl.offsetWidth;

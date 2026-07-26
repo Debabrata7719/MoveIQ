@@ -156,3 +156,122 @@
     margin: 0;
   }
 }
+
+/* Custom scrollbar matching Frontenddemo */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3c6d8;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #737687;
+}
+
+.card-level-1 {
+  background-color: #ffffff;
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
+  border: 1px solid #c3c6d8;
+  transition: all 0.2s ease-in-out;
+}
+
+.card-level-1:hover {
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Fix select option color issue in Chrome/Windows dark mode */
+select option {
+  background-color: #0f172a !important; /* bg-slate-900 */
+  color: #f8fafc !important; /* text-slate-50 */
+}
+
+.icon-fill {
+  font-variation-settings: 'FILL' 1;
+}
+
+/* --- Global Dark Mode Color Mappings --- */
+.dark .bg-white,
+.dark [class*="bg-[#faf8ff]"],
+.dark [class*="bg-[#f7f9fd]"],
+.dark [class*="bg-[#fdfbf7]"],
+.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+.dark .card-level-1,
+.dark [class*="bg-[#f3f3fe]"],
+.dark [class*="bg-[#f2f4f8]"],
+.dark [class*="bg-[#f8f9fc]"],
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+.dark [class*="bg-[#e2e6ff]"],
+.dark [class*="bg-[#e0e2e6]"] {
+  background-color: #334155 !important;
+}
+
+.dark [class*="bg-[#dbe1ff]"] {
+  background-color: #1e3a8a !important;
+  color: #93c5fd !important;
+}
+
+.dark [class*="text-[#191c1f]"],
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark [class*="text-[#424656]"],
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+.dark [class*="text-[#737687]"],
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="text-[#004ccd]"] {
+  color: #60a5fa !important;
+}
+
+.dark [class*="border-[#c3c6d8]"],
+.dark [class*="border-[#c3c6d7]"],
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-100 {
+  border-color: #334155 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Fix shadows in dark mode */
+.dark .shadow-sm,
+.dark .shadow,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-xl,
+.dark .shadow-2xl,
+.dark .card-level-1 {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}

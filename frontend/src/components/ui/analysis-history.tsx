@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Activity, Calendar, ExternalLink, TrendingUp, Trash2 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface AnalysisHistoryProps {
     token: string;
@@ -76,57 +76,93 @@ export const AnalysisHistory = ({ token, onOpenSession }: AnalysisHistoryProps) 
     }
 
     const getTrendData = () => {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        
-        // Filter last 7 days and sort newest to oldest
-        const recent = sessions
-            .filter(s => new Date(s.created_at) >= sevenDaysAgo)
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-            
-        // Group by day, keeping only the first (latest) session per day
-        const dailyMap = new Map();
-        for (const s of recent) {
-            const dateStr = new Date(s.created_at).toLocaleDateString(undefined, { weekday: 'short' });
-            if (!dailyMap.has(dateStr)) {
-                dailyMap.set(dateStr, {
-                    date: dateStr,
-                    score: s.risk_data?.overall_health_score || 0
-                });
-            }
-        }
-        
-        // Convert back to array and reverse to chronological order (oldest to newest)
-        return Array.from(dailyMap.values()).reverse();
+        return [...sessions]
+            .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+            .map((s, i, arr) => {
+                const score = s.risk_data?.overall_health_score ?? 100;
+                const efficiency = s.risk_data?.biomechanical_efficiency_score ?? score;
+                const valgus = s.risk_data?.valgus_angle ?? 0;
+                const prevScore = i > 0 ? (arr[i - 1].risk_data?.overall_health_score ?? 100) : score;
+                const diff = score - prevScore;
+                const diffLabel = i === 0 ? 'Baseline' : diff > 0 ? `+${diff} pts` : diff < 0 ? `${diff} pts` : 'No change';
+                return {
+                    name: `S${i + 1}`,
+                    date: s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : `S${i + 1}`,
+                    video: s.video_name || `Session ${i + 1}`,
+                    score: score,
+                    efficiency: efficiency,
+                    valgus: Number(valgus.toFixed(1)),
+                    diff: diff,
+                    diffLabel: diffLabel
+                };
+            });
     };
+
+    const chartData = getTrendData();
+    const latestDiff = chartData[chartData.length - 1]?.diff ?? 0;
+    const latestDiffLabel = chartData[chartData.length - 1]?.diffLabel ?? 'Baseline';
 
     return (
         <div className="max-w-6xl mx-auto w-full space-y-6">
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-white tracking-tight mb-2 flex items-center gap-3">
                     <Activity className="w-8 h-8 text-cyan-400" />
-                    Analysis History
+                    Analysis History & Progress
                 </h1>
-                <p className="text-slate-400">View past biomechanical analyses and risk scores.</p>
+                <p className="text-slate-400">View chronological session analytics and progress from previous assessments.</p>
             </div>
 
             {sessions.length > 0 && (
-                <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 backdrop-blur-xl mb-8">
-                    <div className="flex items-center gap-2 mb-6">
-                        <TrendingUp className="w-5 h-5 text-cyan-400" />
-                        <h2 className="text-xl font-bold text-white">7-Day Health Score Trend</h2>
+                <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 backdrop-blur-xl mb-8 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                        <div className="flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-cyan-400" />
+                            <h2 className="text-xl font-bold text-white">Session-over-Session Progress Analytics</h2>
+                        </div>
+                        {chartData.length > 1 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-400">Latest vs Prev Session:</span>
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                                    latestDiff > 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                    latestDiff < 0 ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                                    'bg-slate-800 text-slate-300 border border-slate-700'
+                                }`}>
+                                    {latestDiffLabel}
+                                </span>
+                            </div>
+                        )}
                     </div>
-                    <div className="h-64 w-full">
+                    <div className="h-72 w-full pt-2">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={getTrendData()}>
+                            <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickMargin={10} />
+                                <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} fontStyle="bold" />
                                 <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={12} />
                                 <Tooltip 
-                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc' }}
-                                    itemStyle={{ color: '#22d3ee', fontWeight: 'bold' }}
+                                    content={({ active, payload }: any) => {
+                                        if (active && payload && payload.length) {
+                                            const data = payload[0].payload;
+                                            return (
+                                                <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs space-y-1.5 min-w-[190px]">
+                                                    <p className="font-bold text-cyan-400 border-b border-slate-700 pb-1">{data.video} ({data.date})</p>
+                                                    <p className="flex justify-between font-semibold"><span className="text-slate-400">Health Score:</span> <strong className="text-cyan-300">{data.score}/100</strong></p>
+                                                    <p className="flex justify-between font-semibold"><span className="text-slate-400">Efficiency:</span> <strong className="text-emerald-400">{data.efficiency}/100</strong></p>
+                                                    <p className="flex justify-between font-semibold"><span className="text-slate-400">Valgus Angle:</span> <strong className="text-amber-400">{data.valgus}°</strong></p>
+                                                    <div className="pt-1 border-t border-slate-700 flex justify-between items-center font-bold">
+                                                        <span className="text-slate-400">vs Prev Session:</span>
+                                                        <span className={data.diff > 0 ? 'text-emerald-400' : data.diff < 0 ? 'text-rose-400' : 'text-slate-400'}>
+                                                            {data.diffLabel}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
                                 />
-                                <Line type="monotone" dataKey="score" stroke="#06b6d4" strokeWidth={3} dot={{ fill: '#06b6d4', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                                <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 600, paddingTop: '10px' }} />
+                                <Line name="Health Score" type="monotone" dataKey="score" stroke="#06b6d4" strokeWidth={3} dot={{ fill: '#06b6d4', strokeWidth: 2, r: 5 }} activeDot={{ r: 8 }} />
+                                <Line name="Efficiency" type="monotone" dataKey="efficiency" stroke="#10b981" strokeWidth={2.5} strokeDasharray="4 4" dot={{ fill: '#10b981', r: 4 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
