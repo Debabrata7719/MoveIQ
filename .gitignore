@@ -223,6 +223,12 @@ __marimo__/
 uploads/
 
 # Project Specific
+Bugs.md
+Docs
+scratch/
+scripts/
+athelete_design
+Frontenddemo
 generation_flow.md
 steps.md
 models/
@@ -237,8 +243,10 @@ outputs/recommendations/
 data/processed/
 test_mp.py
 frontend_architecture_plan.md
-# Test Outputs
-tests/test_outputs/
+Scalability.md
+# Test Folder & Outputs
+tests/
+outputs/annotated_images/
 
 # Frontend (Next.js)
 frontend/node_modules/
