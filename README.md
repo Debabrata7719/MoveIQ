@@ -1,165 +1,162 @@
-# Sports Injury Risk Detection
+# Sports Injury Risk Detection (MoveIQ)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8%2B-green.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
+![Next.js](https://img.shields.io/badge/Next.js-14%2B-black.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-An advanced, AI-assisted computer vision pipeline designed to analyze athletic movements (like squats, jumps, etc.), calculate injury risk scores, and provide actionable, personalized recommendations.
+An advanced, AI-assisted computer vision and biomechanical analysis platform designed to evaluate athletic movements (squats, lunges, jumps, running), calculate injury risk scores, and deliver personalized AI corrective exercise plans. Features a comprehensive web dashboard, real-time operations telemetry, and role-based access control (RBAC).
 
-## Description
+---
 
-This project provides a fully automated, end-to-end pipeline that bridges the gap between raw video footage and professional-level biomechanical feedback. It is designed to help athletes and coaches identify risky movement patterns before they lead to injuries. 
+## 🌟 Key Features & Architecture Overview
 
-The system operates in four seamless stages:
-1. **Pose Extraction**: Tracks 33 critical body landmarks frame-by-frame from video or webcam feeds.
-2. **Biomechanical Analysis**: Evaluates joint angles, balance sway, knee valgus, and left-vs-right body asymmetries.
-3. **Risk Scoring Engine**: Merges biomechanics with historical injury data (from MongoDB) to assign a Health Score and Risk Category.
-4. **AI Recommendation Engine**: Uses Large Language Models (LLMs) to translate raw flaws into plain-English and assigns pre-approved corrective exercises.
+The system operates across a multi-layered architecture combining computer vision, biomechanical math models, large language models, and enterprise-grade system operations:
 
-### Backend Architecture
-This pipeline is designed for seamless web frontend integration:
-- **Stateless Operation**: Intermediate CSV files are automatically deleted after processing to keep the server clean.
-- **Database Persistence**: All biomechanics data, risk scores, and generated reports are stored permanently in **MongoDB**.
-- **Object Storage**: Heavy video files are automatically uploaded to **Cloudinary** and securely linked in the database so your backend never hosts media files directly.
-- **Decoupled Engines**: The heavy LLM processing (Recommendation Engine) runs completely independently of the fast video processing engine.
-- **Demographics-Aware Scoring**: The core risk engine dynamically modifies injury risk using the athlete's exact Height, Weight (BMI), Age, Gender, and Primary Sport.
+### 1. 🎥 Four-Stage AI & Biomechanics Pipeline
+- **Stage 1: Pose Landmark Extraction**: Utilizes MediaPipe & OpenCV to track 33 3D body landmarks frame-by-frame from uploaded videos or live webcam feeds.
+- **Stage 2: Biomechanical Analysis**: Evaluates kinematic joint angles (knee flexion, hip flexion, ankle dorsiflexion), balance sway, dynamic valgus, and left-vs-right body asymmetries.
+- **Stage 3: Demographics-Aware Risk Scoring**: Combines real-time kinematics with historical athlete profiles (Height, Weight/BMI, Age, Gender, Sport, Previous Injuries) stored in MongoDB to compute an overall 0–100 Health Score and Risk Category (Low, Moderate, High, Severe).
+- **Stage 4: AI Recommendation Engine (LangGraph & Groq)**: Triggers an LLM orchestration workflow to translate biomechanical flaws into plain-English summaries and assign targeted corrective rehab exercises.
 
-## Project Structure
+### 2. 🖥️ Full-Stack Web Application (Next.js & React)
+- **Modern Acetternity & Tailwind UI**: Features a sleek, dynamic interface with glassmorphism, smooth animations, and interactive data visualization charts.
+- **Full Theme Support (Light & Dark Mode)**: System-wide theme switcher integrated into user settings, seamlessly adapting dashboards, charts, and analysis tables.
+- **Client-Side PDF Report Generation**: Dynamically renders and compiles high-resolution A4 diagnostic reports natively in the browser using React, `html-to-image`, and `jsPDF`.
 
-Following enterprise software architecture standards, the core logic is cleanly separated into modular components:
+### 3. 🛡️ Operations & Admin Portal (RBAC)
+- **Role-Based Access Control**: Secure separation between Athletes, Coaches, and Operations Admins.
+- **Real-Time System Diagnostics**: Live health telemetry tracking MongoDB/MySQL connection latency, memory utilization, API uptime, and storage health.
+- **Analytics & Audit Logging**: System-wide analytics dashboards tracking risk distributions, session volume, error rates, and security audit logs.
+- **Account Provisioning**: Admins can inspect users, modify roles, and monitor system-wide activity.
+
+### 4. ☁️ Enterprise Cloud & Storage Layer
+- **Stateless Server Processing**: Temporary video frames and CSVs are automatically purged after pipeline execution to ensure zero server bloat.
+- **Cloudinary Media Storage**: Processed videos and key annotated moment thumbnails are uploaded directly to Cloudinary and linked via secure CDN URLs in MongoDB.
+- **Dual-Database Persistence**:
+  - **MySQL / Supabase PostgreSQL**: Stores user identities, hashed passwords (`bcrypt`), and authentication roles.
+  - **MongoDB Atlas**: Stores flexible document schemas for athlete profiles, session metadata, frame-by-frame biomechanics, risk scores, and AI recommendation reports.
+
+---
+
+## 📁 Repository Structure
 
 ```text
 Sports-Injury-Risk-/
-├── data/
-│   ├── profiles/            # Manually defined athlete history CSVs
-│   └── raw_videos/          # Input videos for the pipeline
-├── database/                # MongoDB integration and operations
-├── outputs/                 # Temporary directories (cleaned up automatically)
-├── tests/                   # Pytest automated testing suite
-└── src/
-    ├── main.py              # Main entry point (Runs Step 1)
-    ├── pose_extractor.py    # MediaPipe pose extraction script
-    ├── config.py            # Global thresholds and directory paths
-    ├── biomechanics/        # Pure math calculators and frame analyzers
-    ├── risk_scoring/        # Health/Risk threshold rules and engine
-    └── recommendations/     # LLM prompts and LangGraph orchestration
-├── frontend/                # Next.js / Tailwind React Web Application
-├── api/                     # FastAPI backend bridging the core engine and frontend
+├── api/                     # FastAPI backend server & REST endpoints
+│   ├── auth/                # MySQL / PostgreSQL authentication & JWT handlers
+│   ├── routers/             # API route controllers (auth, profile, sessions, recommendations, ops, coach, cloudinary)
+│   └── utils/               # Helper utilities (email notifications, security)
+├── frontend/                # Next.js 14 / Tailwind CSS Web Application
+│   ├── src/app/             # App router pages (dashboard, analysis, reports, settings, ops portal)
+│   └── src/components/      # Reusable UI components and visual charts
+├── src/                     # Core AI & Biomechanics Python Engine
+│   ├── main.py              # Pipeline execution entry point
+│   ├── pose_extractor.py    # MediaPipe 3D pose extraction script
+│   ├── config.py            # Global thresholds, joint limits, and directory paths
+│   ├── biomechanics/        # Pure math calculators and symmetry analyzers
+│   ├── risk_scoring/        # Health score algorithms and demographic multipliers
+│   └── recommendations/     # LangGraph workflows and LLM prompts
+├── database/                # Database connection managers (MongoDB, Cloud Storage)
+├── scripts/                 # Maintenance and administrative seeding scripts
+├── tests/                   # Modular component-by-component and end-to-end test suite
+└── Docs/                    # Architectural and database schema documentation
 ```
 
-## Database Architecture
+---
 
-All persistent data operations are strictly handled by the `database/mongo_utils.py` module. The project uses a NoSQL document-based structure in MongoDB to store pipeline results across four core collections:
+## 🚀 Getting Started & Installation
 
-1. **`athlete_profiles`**: Stores static user data (e.g., `athlete_id`, `has_previous_injury`, `weekly_training_sessions`, `height`, `weight`, `age`, `gender`, `sport`). This must be populated before processing a video, as the risk engine uses demographics to multiply or penalize risk baselines.
-2. **`sessions`**: Tracks each unique video analysis run with a unique UUID (`session_id`), linking the video name to the athlete.
-3. **`biomechanics`**: Stores the heavy, frame-by-frame joint angle calculations and the overall mathematical summaries (range of motion, valgus).
-4. **`risk_scores`**: Stores the final 0-100 risk score, category, and a list of flagged movement flaws.
-5. **`recommendations`**: Stores the raw AI generated JSON summary, including the core one-line summary and structured corrective exercise categories.
+### 1. Prerequisites
+**Backend (AI Pipeline & API Server):**
+- **Python 3.10+**
+- **MongoDB Atlas** (or local MongoDB instance)
+- **MySQL / Supabase PostgreSQL** database
+- **Cloudinary Account** (for video storage)
+- **Groq API Key** (for AI recommendations)
 
-## Installation
+**Frontend (Web Dashboard):**
+- **Node.js 18+** & **npm** (Only required if running the Next.js web interface in `frontend/`)
 
-1. Clone the repository and navigate into the directory:
-   ```bash
-   git clone <repository-url>
-   cd Sports-Injury-Risk-
-   ```
-
-2. (Optional but recommended) Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
-
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Usage
-
-The pipeline is split into two independent flows to optimize speed and frontend integration.
-
-### Step 1: Process Video & Calculate Risk
-Execute the main script and pass the athlete's ID (for MongoDB linkage) and optionally the name of a video located in your `data/raw_videos` folder:
-
+### 2. Backend Setup
+Clone the repository and set up the Python virtual environment:
 ```bash
-python src/main.py --athlete_id "athlete_001" --video_name sports
-```
-*(If you do not provide `--video_name`, the script will prompt you to select a video or use a live webcam feed).*
-
-The script will:
-1. Process the video and calculate biomechanical flaws.
-2. Pull the athlete's historical data from MongoDB.
-3. Print a fast "Risk Score Report" directly to the terminal.
-4. Securely upload the generated `_annotated.mp4` video to Cloudinary.
-5. Save the risk data and Cloudinary URL to MongoDB and **clean up/delete** all temporary CSV and `.mp4` files on your hard drive.
-
-### Step 2: Generate Premium Recommendations (Optional)
-Once a session is processed, you can generate detailed, AI-driven corrective exercises by running the recommendation engine manually using the Session ID generated in Step 1:
-
-```bash
-python src/recommendations/engine.py --video_name "sports" --session_id "YOUR_SESSION_ID"
+git clone <repository-url>
+cd Sports-Injury-Risk-
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-The script will:
-1. Query MongoDB for the specific session's risk scores.
-2. Connect to Groq/LangGraph to generate a personalized rehab plan.
-3. Save the full, massive text report string directly to the `full_recommendation_reports` collection in MongoDB for your frontend to download.
+Create a `.env` file in the project root with your credentials:
+```env
+# Database Connections
+DATABASE_URL=mysql+pymysql://user:password@localhost:3306/sports_db
+MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGO_DB_NAME=sports_injury_db
+USE_LOCAL_DB=false
 
-## Configuration
+# Cloud Storage & AI Keys
+CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
+GROQ_API_KEY=gsk_your_groq_api_key_here
 
-- **API Keys & Database**: This project requires a MongoDB instance, a Groq API key, and a Cloudinary account. You must add these to a `.env` file in the root directory:
-  ```env
-  GROQ_API_KEY=your_api_key_here
-  MONGO_URI=mongodb://localhost:27017
-  MONGO_DB_NAME=sports_injury_db
-  CLOUDINARY_URL=cloudinary://your_api_key_here@your_cloud_name
-  ```
-- **Directories and Thresholds**: General configurations, file paths, and joint angle thresholds can be modified in `src/config.py`.
-- **Athlete Profiles**: Athlete history is read from the `athlete_profiles` collection in MongoDB. (Insert a document with `athlete_id`, `has_previous_injury`, `weekly_training_sessions`, etc., before running the pipeline).
+# Security & JWT Auth
+SECRET_KEY=your_super_secret_jwt_key_here
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+```
 
-## API Backend Integration
-
-The project now includes a high-performance **FastAPI** backend located in the `api/` directory. This acts as a bridge between the core Python logic and your web frontend (React/Next.js).
-
-### Features
-- **JWT Authentication**: Validates users against a MySQL database. Client identity (`athlete_id`) is strictly extracted from the secure token.
-- **REST Endpoints**: Exposes endpoints for uploading videos, generating recommendations, and retrieving profiles.
-- **Client-Side PDFs**: Serves structured JSON to the frontend, which handles dynamically rendering and downloading A4-sized PDF reports natively in the browser via React, `html-to-image`, and `jsPDF`.
-
-To run the API server:
+Start the FastAPI backend server:
 ```bash
 uvicorn api.server:app --reload --port 8000
 ```
-Then navigate to `http://localhost:8000/docs` to view the interactive Swagger API documentation. For detailed endpoint information, see [API.md](./API.md).
+*API Swagger Documentation will be live at: `http://localhost:8000/docs`*
 
-### Web Frontend (Next.js)
-A complete, Acet Labs-styled web application is located in the `frontend` directory. 
-To launch the frontend dashboard:
+### 3. Frontend Setup
+Open a new terminal, navigate to the frontend directory, and start the Next.js development server:
 ```bash
 cd frontend
 npm install
 npm run dev -- -p 3000
 ```
-
-## Testing
-
-This project includes a robust, automated end-to-end test suite that simulates the pipeline without writing any test data to your MongoDB. 
-
-To run the full pipeline test (which safely reroutes all outputs to a `tests/test_outputs` directory):
-```bash
-pytest tests/test_pipeline.py
-```
-
-## Features
-
-- **Automated Video Processing**: Hands-free biomechanical analysis from raw video files or live webcams.
-- **Database Persistence**: Fully integrated with MongoDB to permanently save session data, risk scores, and final textual reports.
-- **Auto-Cleanup**: Intermediate CSV files are automatically wiped after processing to preserve hard drive space.
-- **Detailed Dashboards**: Quickly view an athlete's Overall Health Score, Movement Quality, Biomechanical Efficiency, and Fatigue Levels.
-- **Plain-English Feedback**: AI translates technical, medical jargon into easy-to-understand summaries for coaches and athletes.
-- **Personalized Rehab Plans**: Automatically generated corrective exercise recommendations based on specific detected flaws.
+*The web dashboard will be accessible at: `http://localhost:3000`*
 
 ---
-*Disclaimer: This is an AI-assisted movement screening tool based on video pose estimation and rule-based analysis. It is not a medical diagnosis. Please consult a physiotherapist or doctor for professional evaluation and treatment.*
+
+## 🛠️ Administrative & Maintenance Scripts
+
+### Seeding an Operations Admin Account
+To create an initial Operations Admin user for accessing the `/ops` portal:
+```bash
+python scripts/seed_ops_mysql.py
+```
+This script provisions an admin account in MySQL (Default: `debabratadey9090@gmail.com`) with role `ops_admin`, granting full access to system telemetry, analytics dashboards, and audit logs.
+
+---
+
+## 🧪 Testing Infrastructure
+
+The project includes a fully modular, dependency-isolated testing suite located in `tests/`. It includes synthetic mock video generators (`mock_data.py`) so tests run cleanly without requiring external video downloads or live cloud database connections.
+
+### Test Components:
+- `test_01_pose_extractor.py`: Validates video reading and landmark CSV creation.
+- `test_02_biomechanics.py`: Validates kinematic angle calculations and symmetry math.
+- `test_03_risk_scoring.py`: Validates injury risk category assignment and demographic multipliers.
+- `test_04_recommendations.py`: Validates LangGraph LLM workflow and structured summaries.
+- `test_05_databases_and_storage.py`: Validates Cloudinary upload mocking and DB schemas.
+- `test_06_end_to_end.py`: Runs the full 4-stage pipeline sequentially on synthetic video data.
+
+To run the complete test suite:
+```bash
+pytest -v
+```
+
+---
+
+## 📚 Documentation
+- **API Reference**: Detailed REST endpoint documentation is available in [API.md](./API.md).
+- **Admin Architecture**: System administration and telemetry details are available in [admin.md](./admin.md).
+- **Database Schema**: Comprehensive database migration and collection schemas are documented in [Docs/New_DB_Schema_design.md](./Docs/New_DB_Schema_design.md).
+
+---
+*Disclaimer: This is an AI-assisted sports movement screening tool. It is designed for biomechanical evaluation and training optimization, not as a direct medical diagnosis.*
