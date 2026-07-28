@@ -11,6 +11,7 @@ from src.main import run_pipeline
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from api.auth import get_assigned_athletes
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -22,10 +23,24 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def upload_and_analyze(
     video: UploadFile = File(...),
     custom_name: Optional[str] = Form(None),
+    athlete_id: Optional[str] = Form(None),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    athlete_id = current_user["user_id"]
+    user_id = current_user["user_id"]
     
+    # If athlete_id is provided, confirm coach authorization
+    if athlete_id:
+        if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Only coaches or admins can upload videos on behalf of athletes")
+        
+        assigned = get_assigned_athletes(user_id)
+        is_assigned = any(str(ath["id"]) == str(athlete_id) for ath in assigned)
+        if not is_assigned and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Athlete is not assigned to your roster")
+        target_athlete_id = str(athlete_id)
+    else:
+        target_athlete_id = str(user_id)
+
     if not video.filename.endswith(('.mp4', '.mov', '.avi')):
         raise HTTPException(status_code=400, detail="Invalid video format")
         
@@ -45,7 +60,7 @@ def upload_and_analyze(
 
     # Run pipeline
     try:
-        result = run_pipeline(athlete_id=athlete_id, video_name=final_video_name, source_path=file_path)
+        result = run_pipeline(athlete_id=target_athlete_id, video_name=final_video_name, source_path=file_path)
         return {
             "message": "Analysis complete",
             "session_id": result["session_id"],
@@ -72,7 +87,7 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
         {"key_moments": 0}
     ).sort("created_at", -1))
     
-    # Clean up ObjectIds and attach risk data
+    # Clean up ObjectIds and attach risk data and biomechanics
     for s in sessions:
         s["_id"] = str(s["_id"])
         risk_score = db["risk_scores"].find_one({"session_id": s["session_id"]})
@@ -80,6 +95,12 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
             s["risk_data"] = risk_score.get("risk_data", {})
         else:
             s["risk_data"] = {}
+            
+        bio_data = db["biomechanics_data"].find_one({"session_id": s["session_id"]})
+        if bio_data:
+            s["biomechanics"] = bio_data.get("summary", {})
+        else:
+            s["biomechanics"] = {}
         
     return sessions
 

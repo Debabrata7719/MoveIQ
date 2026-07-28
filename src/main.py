@@ -72,20 +72,22 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     # The risk data is returned to the API via the return statement below.
 
     # ==========================================
-    # CLOUDINARY UPLOAD
+    # CLOUDINARY UPLOAD (DISABLED BY USER REQUEST)
+    # Cloudinary is reserved strictly for profile photos to save storage/bandwidth.
     # ==========================================
-    from config import ANNOTATED_VIDEO_DIR
-    annotated_video_path = os.path.join(ANNOTATED_VIDEO_DIR, f"{video_name}_annotated.mp4")
-    if os.path.exists(annotated_video_path):
-        print(f"\n{Colors.BLUE}Uploading Annotated Video to Cloudinary...{Colors.ENDC}")
-        try:
-            from database.cloud_storage import upload_video
-            from database.mongo_utils import update_session_video_url
-            video_url = upload_video(annotated_video_path)
-            if video_url:
-                update_session_video_url(session_id, video_url)
-        except ImportError:
-            print("Could not import Cloudinary modules. Skipping upload.")
+    video_url = None
+    # from config import ANNOTATED_VIDEO_DIR
+    # annotated_video_path = os.path.join(ANNOTATED_VIDEO_DIR, f"{video_name}_annotated.mp4")
+    # if os.path.exists(annotated_video_path):
+    #     print(f"\n{Colors.BLUE}Uploading Annotated Video to Cloudinary...{Colors.ENDC}")
+    #     try:
+    #         from database.cloud_storage import upload_video
+    #         from database.mongo_utils import update_session_video_url
+    #         video_url = upload_video(annotated_video_path)
+    #         if video_url:
+    #             update_session_video_url(session_id, video_url)
+    #     except ImportError:
+    #         print("Could not import Cloudinary modules. Skipping upload.")
 
     # ==========================================
     # KEY MOMENTS IMAGES (BASE64)

@@ -148,7 +148,16 @@ def calculate_injury_history_score(profile_row: pd.Series):
         return 0, []
 
     recency = str(profile_row.get("injury_recency", "")).strip().lower()
-    recency_scores = {"recent": 90, "moderate": 60, "old": 30}
+    recency_scores = {
+        "recent": 90,
+        "within 3 months": 90,
+        "within 6 months": 80,
+        "moderate": 60,
+        "within 1 year": 60,
+        "old": 30,
+        "over 1 year ago": 30,
+        "none": 0
+    }
     score = recency_scores.get(recency, 50)  # default 50 if recency is unclear
 
     injury_type = profile_row.get("previous_injury_type", "unspecified")

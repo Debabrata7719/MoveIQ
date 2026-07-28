@@ -4,10 +4,13 @@ from database.mongo_utils import get_db_connection
 from api.auth import get_connection, USE_LOCAL_DB
 
 # Import routers
-from api.routers.auth_router import router as auth_router
+from api.routers.auth_router import router as auth_router, google_auth_router
 from api.routers.profile_router import router as profile_router
 from api.routers.sessions_router import router as sessions_router
 from api.routers.recommendations_router import router as recommendations_router
+from api.routers.coach_router import router as coach_router
+from api.routers.cloudinary_router import router as cloudinary_router
+from api.routers.ops_router import router as ops_router
 
 app = FastAPI(
     title="Sports Injury Risk Detection API",
@@ -32,6 +35,10 @@ app.include_router(auth_router)
 app.include_router(profile_router)
 app.include_router(sessions_router)
 app.include_router(recommendations_router)
+app.include_router(coach_router)
+app.include_router(cloudinary_router)
+app.include_router(ops_router, include_in_schema=False)
+app.include_router(google_auth_router)
 
 from fastapi.responses import RedirectResponse
 
