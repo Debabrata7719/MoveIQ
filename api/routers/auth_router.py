@@ -1,15 +1,21 @@
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from typing import Dict, Any
-from api.auth import create_user, get_user_by_email, get_user_roles, assign_role
+from api.auth import create_user, get_user_by_email, get_user_roles, assign_role, update_user_profile_picture
 from api.auth.password_utils import hash_password, verify_password, validate_password
 from api.auth.jwt_handler import create_access_token
 from api.dependencies import get_current_user
 import random
+import os
+import urllib.parse
+import json
+import httpx
 from api.utils.email_utils import send_signup_otp, send_forgot_password_otp, send_password_changed_success, send_welcome_email
 from api.utils.redis_utils import store_otp, verify_otp
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+google_auth_router = APIRouter(tags=["google-auth"])
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -99,14 +105,19 @@ def login_user(user: UserLogin):
     
     token = create_access_token(token_data)
     
+    from api.auth import get_user_by_id
+    full_user = get_user_by_id(db_user["id"]) or db_user
+    
     return {
         "access_token": token,
         "token_type": "bearer",
         "user": {
-            "id": db_user["id"],
-            "email": db_user["email"],
-            "full_name": db_user["full_name"],
-            "roles": roles
+            "id": full_user["id"],
+            "email": full_user["email"],
+            "full_name": full_user["full_name"],
+            "roles": roles,
+            "profile_picture_url": full_user.get("profile_picture_url"),
+            "coach_code": full_user.get("coach_code")
         }
     }
 
@@ -154,10 +165,14 @@ def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
     from api.auth import get_user_by_id
     db_user = get_user_by_id(int(current_user["user_id"]))
     full_name = db_user["full_name"] if db_user else None
+    profile_picture_url = db_user.get("profile_picture_url") if db_user else None
+    coach_code = db_user.get("coach_code") if db_user else None
     return {
         "user": {
             **current_user,
             "full_name": full_name,
+            "profile_picture_url": profile_picture_url,
+            "coach_code": coach_code
         }
     }
 
@@ -213,3 +228,109 @@ def update_password(passwords: PasswordUpdate, current_user: Dict[str, Any] = De
     send_password_changed_success(db_user["email"])
         
     return {"message": "Password updated successfully"}
+
+#Google Login & Signup Codes
+@router.get("/google/login")
+@google_auth_router.get("/auth/google/login")
+def google_login(role: str = "athlete"):
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Google Client ID not configured")
+    
+    state_val = f"role:{role}"
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state_val,
+        "access_type": "offline",
+        "prompt": "select_account"
+    }
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+    return RedirectResponse(url=url)
+
+@router.get("/google/callback")
+@google_auth_router.get("/auth/google/callback")
+async def google_callback(code: str = None, state: str = None, error: str = None):
+    if error or not code:
+        return RedirectResponse(url="http://localhost:3000?error=google_auth_failed")
+    
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    
+    token_url = os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post(token_url, data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri
+        })
+        if token_res.status_code != 200:
+            print(f"Google token exchange failed: {token_res.text}")
+            return RedirectResponse(url="http://localhost:3000?error=token_exchange_failed")
+        
+        token_data = token_res.json()
+        access_token = token_data.get("access_token")
+        
+        user_info_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers={
+            "Authorization": f"Bearer {access_token}"
+        })
+        if user_info_res.status_code != 200:
+            print(f"Google userinfo failed: {user_info_res.text}")
+            return RedirectResponse(url="http://localhost:3000?error=user_info_failed")
+            
+        user_info = user_info_res.json()
+        
+    email = user_info.get("email")
+    full_name = user_info.get("name", email.split("@")[0] if email else "Google User")
+    picture = user_info.get("picture", "")
+    
+    if not email:
+        return RedirectResponse(url="http://localhost:3000?error=no_email_provided")
+        
+    role = "athlete"
+    if state and state.startswith("role:"):
+        role_param = state.split(":", 1)[1]
+        if role_param in ["athlete", "coach"]:
+            role = role_param
+            
+    existing_user = get_user_by_email(email)
+    if existing_user:
+        user_id = existing_user["id"]
+        roles = get_user_roles(user_id)
+        if not roles:
+            assign_role(user_id, role)
+            roles = [role]
+    else:
+        dummy_hash = "$2b$12$OAUTH_GOOGLE_ACCOUNT_DO_NOT_USE_PASSWORD_LOGIN_XXXXXXXXX"
+        user_id = create_user(email, dummy_hash, full_name)
+        if not user_id:
+            return RedirectResponse(url="http://localhost:3000?error=user_creation_failed")
+        assign_role(user_id, role)
+        roles = [role]
+        
+    if picture:
+        update_user_profile_picture(user_id, picture)
+        
+    from api.auth import get_user_by_id
+    full_user = get_user_by_id(user_id) or {}
+        
+    user_payload = {
+        "id": user_id,
+        "user_id": user_id,
+        "email": email,
+        "full_name": full_name,
+        "roles": roles,
+        "profile_picture_url": picture or full_user.get("profile_picture_url"),
+        "coach_code": full_user.get("coach_code")
+    }
+    jwt_token = create_access_token(data={"sub": str(user_id), "email": email, "roles": roles})
+    
+    user_json = urllib.parse.quote(json.dumps(user_payload))
+    redirect_url = f"http://localhost:3000?token={jwt_token}&user={user_json}"
+    return RedirectResponse(url=redirect_url)

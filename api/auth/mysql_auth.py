@@ -77,10 +77,12 @@ def assign_role(user_id: int, role_name: str) -> bool:
         cursor.execute("SELECT id FROM roles WHERE role_name = %s", (role_name,))
         role = cursor.fetchone()
         if not role:
-            return False
+            cursor.execute("INSERT INTO roles (role_name) VALUES (%s)", (role_name,))
+            conn.commit()
+            role_id = cursor.lastrowid
+        else:
+            role_id = role['id']
             
-        role_id = role['id']
-        
         # INSERT IGNORE silently skips if the role is already assigned
         cursor.execute("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
         conn.commit()
@@ -125,7 +127,30 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM users WHERE id = %s"
         cursor.execute(query, (user_id,))
         user = cursor.fetchone()
-        return user
+        if not user:
+            return None
+        user_dict = dict(user)
+        
+        # Ensure coach has a unique invite code
+        cursor.execute("""
+            SELECT 1 FROM user_roles ur 
+            JOIN roles r ON ur.role_id = r.id 
+            WHERE ur.user_id = %s AND r.role_name = 'coach'
+        """, (user_id,))
+        is_coach = cursor.fetchone()
+        if is_coach and not user_dict.get("coach_code"):
+            import random
+            import string
+            while True:
+                code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                cursor.execute("SELECT 1 FROM users WHERE coach_code = %s", (code,))
+                if not cursor.fetchone():
+                    break
+            cursor.execute("UPDATE users SET coach_code = %s WHERE id = %s", (code, user_id))
+            conn.commit()
+            user_dict["coach_code"] = code
+            
+        return user_dict
     except mysql.connector.Error as err:
         print(f"Error: {err}")
         return None
@@ -151,6 +176,24 @@ def update_user_account(user_id: int, full_name: str, email: str) -> bool:
         cursor.close()
         conn.close()
 
+def update_user_profile_picture(user_id: int, profile_picture_url: str) -> bool:
+    """Updates user's profile picture URL in MySQL database."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        query = "UPDATE users SET profile_picture_url = %s, updated_at = NOW() WHERE id = %s"
+        cursor.execute(query, (profile_picture_url, user_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error update_user_profile_picture: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
 def update_user_password(user_id: int, new_password_hash: str) -> bool:
     """Updates user's password."""
     conn = get_connection()
@@ -168,3 +211,530 @@ def update_user_password(user_id: int, new_password_hash: str) -> bool:
     finally:
         cursor.close()
         conn.close()
+
+def search_coaches_by_name(query_str: str) -> List[Dict[str, Any]]:
+    """Search for users with the role 'coach' whose name, email, or coach_code matches query_str."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT u.id, u.full_name, u.email, u.coach_code 
+            FROM users u
+            JOIN user_roles ur ON u.id = ur.user_id
+            JOIN roles r ON ur.role_id = r.id
+            WHERE r.role_name = 'coach' AND (u.full_name LIKE %s OR u.email LIKE %s OR u.coach_code LIKE %s)
+        """
+        like_pattern = f"%{query_str}%"
+        cursor.execute(query, (like_pattern, like_pattern, like_pattern))
+        return cursor.fetchall()
+    except mysql.connector.Error as err:
+        print(f"Error search_coaches_by_name: {err}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_assigned_athletes(coach_id: int) -> List[Dict[str, Any]]:
+    """Get all approved athletes assigned to a coach."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT u.id, u.full_name, u.email, u.profile_picture_url
+            FROM users u
+            JOIN coach_athlete_assignments caa ON u.id = caa.athlete_id
+            WHERE caa.coach_id = %s AND caa.status = 'accepted'
+        """
+        cursor.execute(query, (coach_id,))
+        return cursor.fetchall()
+    except mysql.connector.Error as err:
+        print(f"Error get_assigned_athletes: {err}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def create_athlete_by_coach(email: str, password_hash: str, full_name: str, coach_id: int) -> Optional[int]:
+    """Manually registers an athlete and automatically assigns them to the coach's roster."""
+    conn = get_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        # Create user
+        query_user = """
+            INSERT INTO users (email, password_hash, full_name, is_active, created_at, updated_at) 
+            VALUES (%s, %s, %s, True, NOW(), NOW())
+        """
+        cursor.execute(query_user, (email, password_hash, full_name))
+        athlete_id = cursor.lastrowid
+        
+        # Assign role using the roles table relationship (role name 'athlete')
+        cursor.execute("SELECT id FROM roles WHERE role_name = 'athlete'")
+        role_record = cursor.fetchone()
+        role_id = role_record[0] if role_record else 1 # Fallback to 1 if not exists
+        
+        query_role = "INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)"
+        cursor.execute(query_role, (athlete_id, role_id))
+        
+        # Assign to coach (automatically approved)
+        query_assign = """
+            INSERT INTO coach_athlete_assignments (coach_id, athlete_id, status, created_at)
+            VALUES (%s, %s, 'accepted', NOW())
+        """
+        cursor.execute(query_assign, (coach_id, athlete_id))
+        
+        conn.commit()
+        return athlete_id
+    except mysql.connector.Error as err:
+        print(f"Error create_athlete_by_coach: {err}")
+        conn.rollback()
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def remove_athlete_from_coach(coach_id: int, athlete_id: int) -> bool:
+    """Remove athlete connection from coach's roster."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        query = "DELETE FROM coach_athlete_assignments WHERE coach_id = %s AND athlete_id = %s"
+        cursor.execute(query, (coach_id, athlete_id))
+        # Also remove them from teams
+        query_team = """
+            DELETE ta FROM team_athletes ta
+            JOIN teams t ON ta.team_id = t.id
+            WHERE t.coach_id = %s AND ta.athlete_id = %s
+        """
+        cursor.execute(query_team, (coach_id, athlete_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error remove_athlete_from_coach: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def request_coach(athlete_id: int, coach_id: int) -> bool:
+    """Send connection invite request from athlete to coach."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        # Verify if pairing already exists
+        query_check = "SELECT id FROM coach_athlete_assignments WHERE athlete_id = %s AND coach_id = %s"
+        cursor.execute(query_check, (athlete_id, coach_id))
+        if cursor.fetchone():
+            return False
+            
+        query = """
+            INSERT INTO coach_athlete_assignments (coach_id, athlete_id, status, created_at)
+            VALUES (%s, %s, 'pending', NOW())
+        """
+        cursor.execute(query, (coach_id, athlete_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error request_coach: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_athlete_coach(athlete_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieve coach details and pairing connection status for an athlete."""
+    conn = get_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT caa.status, u.full_name as coach_name, u.email as coach_email,
+                   u.profile_picture_url as coach_picture_url
+            FROM coach_athlete_assignments caa
+            JOIN users u ON caa.coach_id = u.id
+            WHERE caa.athlete_id = %s
+        """
+        cursor.execute(query, (athlete_id,))
+        return cursor.fetchone()
+    except mysql.connector.Error as err:
+        print(f"Error get_athlete_coach: {err}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_coach_requests(coach_id: int) -> List[Dict[str, Any]]:
+    """Retrieve all pending request invites for this coach."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT caa.id, caa.athlete_id, u.full_name as athlete_name, u.email as athlete_email, u.profile_picture_url as athlete_picture_url
+            FROM coach_athlete_assignments caa
+            JOIN users u ON caa.athlete_id = u.id
+            WHERE caa.coach_id = %s AND caa.status = 'pending'
+        """
+        cursor.execute(query, (coach_id,))
+        return cursor.fetchall()
+    except mysql.connector.Error as err:
+        print(f"Error get_coach_requests: {err}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def respond_coach_request(request_id: int, status: str) -> bool:
+    """Approve ('accepted') or reject ('rejected') a pending connection invitation."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        if status.lower() == 'accepted':
+            query = "UPDATE coach_athlete_assignments SET status = 'accepted' WHERE id = %s"
+            cursor.execute(query, (request_id,))
+        else:
+            query = "DELETE FROM coach_athlete_assignments WHERE id = %s"
+            cursor.execute(query, (request_id,))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error respond_coach_request: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_notifications(user_id: int) -> List[Dict[str, Any]]:
+    """Retrieve all notification warnings and alerts for a user."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT id, message, type, is_read, created_at FROM notifications WHERE user_id = %s ORDER BY created_at DESC"
+        cursor.execute(query, (user_id,))
+        return cursor.fetchall()
+    except mysql.connector.Error as err:
+        print(f"Error get_notifications: {err}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def create_notification(user_id: int, message: str, type_str: str = "info") -> bool:
+    """Log an alert message notification to a specific user's feed."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        query = "INSERT INTO notifications (user_id, message, type, is_read, created_at) VALUES (%s, %s, %s, False, NOW())"
+        cursor.execute(query, (user_id, message, type_str))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error create_notification: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def create_team(coach_id: int, team_name: str) -> Optional[int]:
+    """Create a new custom team group under this coach."""
+    conn = get_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        query = "INSERT INTO teams (coach_id, name, created_at) VALUES (%s, %s, NOW())"
+        cursor.execute(query, (coach_id, team_name))
+        conn.commit()
+        return cursor.lastrowid
+    except mysql.connector.Error as err:
+        print(f"Error create_team: {err}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_athlete_to_team(team_id: int, athlete_id: int) -> bool:
+    """Assign an athlete to a custom team group."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        # Verify if already in team
+        cursor.execute("SELECT id FROM team_athletes WHERE team_id = %s AND athlete_id = %s", (team_id, athlete_id))
+        if cursor.fetchone():
+            return True
+        query = "INSERT INTO team_athletes (team_id, athlete_id, created_at) VALUES (%s, %s, NOW())"
+        cursor.execute(query, (team_id, athlete_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error add_athlete_to_team: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_teams_with_athletes(coach_id: int) -> List[Dict[str, Any]]:
+    """Retrieve all teams owned by the coach, listing all grouped athletes."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # Fetch all teams
+        cursor.execute("SELECT id, name FROM teams WHERE coach_id = %s", (coach_id,))
+        teams_list = cursor.fetchall()
+        
+        for t in teams_list:
+            # Fetch all athletes assigned to this team
+            query_ath = """
+                SELECT u.id, u.full_name, u.email
+                FROM users u
+                JOIN team_athletes ta ON u.id = ta.athlete_id
+                WHERE ta.team_id = %s
+            """
+            cursor.execute(query_ath, (t["id"],))
+            t["athletes"] = cursor.fetchall()
+            
+        return teams_list
+    except mysql.connector.Error as err:
+        print(f"Error get_teams_with_athletes: {err}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_team_by_id(coach_id: int, team_id: int) -> bool:
+    """Deletes a custom team group and removes its athlete relations."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        # Verify ownership
+        cursor.execute("SELECT id FROM teams WHERE id = %s AND coach_id = %s", (team_id, coach_id))
+        if not cursor.fetchone():
+            return False
+            
+        # Clean up references first
+        cursor.execute("DELETE FROM team_athletes WHERE team_id = %s", (team_id,))
+        cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error delete_team_by_id: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── Internal Platform Governance Functions ────────────────────────────────────
+
+def get_all_users_paginated(page: int = 1, size: int = 20, search: str = "") -> Dict[str, Any]:
+    """Paginated list of all non-admin users with their roles (operational metadata only)."""
+    conn = get_connection()
+    if not conn:
+        return {"total": 0, "users": []}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        offset = (page - 1) * size
+        like_pattern = f"%{search}%"
+        # Exclude accounts that carry the admin role
+        count_sql = """
+            SELECT COUNT(*) as cnt FROM users u
+            WHERE (u.full_name LIKE %s OR u.email LIKE %s)
+            AND NOT EXISTS (
+                SELECT 1 FROM user_roles ur
+                JOIN roles r ON ur.role_id = r.id
+                WHERE ur.user_id = u.id AND r.role_name = 'admin'
+            )
+        """
+        cursor.execute(count_sql, (like_pattern, like_pattern))
+        total = cursor.fetchone()["cnt"]
+
+        query = """
+            SELECT u.id, u.email, u.full_name, u.is_active, u.created_at
+            FROM users u
+            WHERE (u.full_name LIKE %s OR u.email LIKE %s)
+            AND NOT EXISTS (
+                SELECT 1 FROM user_roles ur
+                JOIN roles r ON ur.role_id = r.id
+                WHERE ur.user_id = u.id AND r.role_name = 'admin'
+            )
+            ORDER BY u.created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        cursor.execute(query, (like_pattern, like_pattern, size, offset))
+        users_raw = cursor.fetchall()
+        users = []
+        for u in users_raw:
+            cursor.execute("""
+                SELECT r.role_name FROM roles r
+                JOIN user_roles ur ON r.id = ur.role_id
+                WHERE ur.user_id = %s
+            """, (u["id"],))
+            u["roles"] = [row["role_name"] for row in cursor.fetchall()]
+            if u.get("created_at"):
+                u["created_at"] = str(u["created_at"])
+            users.append(u)
+        return {"total": total, "users": users}
+    except mysql.connector.Error as err:
+        print(f"Error get_all_users_paginated: {err}")
+        return {"total": 0, "users": []}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_user_roles(user_id: int, roles: List[str]) -> bool:
+    """Replace the complete role set for a user."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
+        for role_name in roles:
+            cursor.execute("SELECT id FROM roles WHERE role_name = %s", (role_name,))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("INSERT INTO roles (role_name) VALUES (%s)", (role_name,))
+                role_id = cursor.lastrowid
+            else:
+                role_id = row["id"]
+            cursor.execute("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error update_user_roles: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def toggle_user_status(user_id: int, is_active: bool) -> bool:
+    """Enable or disable a user account."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_active = %s, updated_at = NOW() WHERE id = %s", (is_active, user_id))
+        conn.commit()
+        return True
+    except mysql.connector.Error as err:
+        print(f"Error toggle_user_status: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_platform_analytics() -> Dict[str, Any]:
+    """Return high-level operational stats."""
+    conn = get_connection()
+    if not conn:
+        return {}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT COUNT(*) as cnt FROM users")
+        total_users = cursor.fetchone()["cnt"]
+        cursor.execute("SELECT COUNT(*) as cnt FROM users WHERE is_active = 1")
+        active_users = cursor.fetchone()["cnt"]
+        cursor.execute("""
+            SELECT r.role_name, COUNT(ur.user_id) as cnt
+            FROM roles r LEFT JOIN user_roles ur ON r.id = ur.role_id
+            GROUP BY r.role_name
+        """)
+        roles_breakdown = {row["role_name"]: row["cnt"] for row in cursor.fetchall()}
+        cursor.execute("""
+            SELECT DATE(created_at) as day, COUNT(*) as count
+            FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY DATE(created_at) ORDER BY day ASC
+        """)
+        daily_registrations = [{"date": str(r["day"]), "count": r["count"]} for r in cursor.fetchall()]
+        try:
+            from database.mongo_utils import get_db_connection as get_mongo
+            mongo_db = get_mongo()
+            total_sessions = mongo_db["sessions"].count_documents({})
+        except Exception:
+            total_sessions = 0
+        return {
+            "total_users": total_users,
+            "active_users": active_users,
+            "roles_breakdown": roles_breakdown,
+            "daily_registrations": daily_registrations,
+            "total_sessions": total_sessions,
+        }
+    except mysql.connector.Error as err:
+        print(f"Error get_platform_analytics: {err}")
+        return {}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_session_audit_log(page: int = 1, size: int = 20, status_filter: str = "") -> Dict[str, Any]:
+    """Return session audit log (operational metadata only)."""
+    try:
+        from database.mongo_utils import get_db_connection as get_mongo
+        mongo_db = get_mongo()
+        query: dict = {}
+        if status_filter:
+            query["status"] = status_filter
+        total = mongo_db["sessions"].count_documents(query)
+        skip = (page - 1) * size
+        cursor_m = mongo_db["sessions"].find(
+            query,
+            {"session_id": 1, "athlete_id": 1, "video_name": 1, "created_at": 1, "status": 1, "error_message": 1}
+        ).sort("created_at", -1).skip(skip).limit(size)
+        sessions = []
+        conn = get_connection()
+        for doc in cursor_m:
+            entry: Dict[str, Any] = {
+                "session_id": str(doc.get("session_id", "")),
+                "athlete_id": str(doc.get("athlete_id", "")),
+                "video_name": doc.get("video_name", ""),
+                "created_at": str(doc.get("created_at", "")),
+                "status": doc.get("status", "completed"),
+                "error_message": doc.get("error_message", ""),
+                "user_email": ""
+            }
+            if conn:
+                try:
+                    c = conn.cursor(dictionary=True)
+                    c.execute("SELECT email FROM users WHERE id = %s", (entry["athlete_id"],))
+                    row = c.fetchone()
+                    if row:
+                        entry["user_email"] = row["email"]
+                    c.close()
+                except Exception:
+                    pass
+            sessions.append(entry)
+        if conn:
+            conn.close()
+        return {"total": total, "sessions": sessions}
+    except Exception as err:
+        print(f"Error get_session_audit_log: {err}")
+        return {"total": 0, "sessions": []}
+

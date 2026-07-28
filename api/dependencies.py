@@ -39,3 +39,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         "email": payload.get("email"),
         "roles": roles
     }
+
+
+def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Restricts access to users carrying the internal ops role. Returns 403 silently."""
+    if "admin" not in current_user.get("roles", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    return current_user
