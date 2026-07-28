@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import React, { useRef, useEffect, useState } from 'react';
 import { HeartPulse, AlertTriangle, Bone, FileText, Download, X, Loader2, Play } from 'lucide-react';
 import jsPDF from 'jspdf';

@@ -7,9 +7,6 @@ import { LandingPage } from "@/components/Landing_page";
 import { Sidebar, ViewType } from "@/components/ui/sidebar";
 import { ProfileForm } from "@/components/ui/profile-form";
 import { SettingsView } from "@/components/ui/settings-view";
-import { AnalysisHistory } from "@/components/ui/analysis-history";
-import { RecommendationsHistory } from "@/components/ui/recommendations-history";
-import { ReportsView } from "@/components/ui/reports-view";
 import { CoachDashboard } from "@/components/ui/coach-dashboard";
 import { DashboardView as AthleteDashboardView } from "@/components/ui/athlete/DashboardView";
 import { AnalysisHistoryView as AthleteAnalysisHistoryView } from "@/components/ui/athlete/AnalysisHistoryView";
@@ -186,6 +183,27 @@ export default function Home() {
     setIsAuthenticated(true);
     localStorage.setItem("token", jwt);
     localStorage.setItem("user", JSON.stringify(userData));
+
+    // Sync authoritative user metadata (such as coach_code and avatar) from backend
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${jwt}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.user) {
+        const freshUser = {
+          id: data.user.user_id || data.user.id,
+          email: data.user.email,
+          full_name: data.user.full_name,
+          roles: data.user.roles,
+          profile_picture_url: data.user.profile_picture_url,
+          coach_code: data.user.coach_code
+        };
+        setUser(freshUser);
+        localStorage.setItem("user", JSON.stringify(freshUser));
+      }
+    })
+    .catch(err => console.error("Failed to sync user on login", err));
 
     const roles = userData.roles || [];
     if (roles.includes('admin')) {
