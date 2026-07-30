@@ -218,12 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
 #Uploaded video (Later change to object storage)
 uploads/
 
 # Project Specific
-Bugs.md
+scalling&Bugs/
+Claude_Bugs.md
 Docs
 scratch/
 scripts/
