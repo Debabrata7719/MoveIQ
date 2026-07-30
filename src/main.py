@@ -2,6 +2,11 @@
 
 import argparse
 import sys
+import numpy as np
+import pandas as pd
+
+from src.logger import get_logger
+logger = get_logger("main")
 
 # Import colors for terminal output
 class Colors:
@@ -27,99 +32,129 @@ def get_risk_color(risk_category):
         return Colors.RED
     return Colors.ENDC
 
-def main():
-    parser = argparse.ArgumentParser(description="Run the full Sports Injury Risk pipeline.")
-def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = None) -> dict:
+def publish_progress(session_id: str, step: str, progress: int):
+    try:
+        import redis
+        import json
+        from api.utils.redis_utils import get_redis_url
+        r = redis.from_url(get_redis_url())
+        r.publish(f"session_progress_{session_id}", json.dumps({"step": step, "progress": progress}))
+    except Exception as e:
+        logger.warning(f"Failed to publish progress for {session_id}: {e}")
+
+def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = None, explicit_session_id: str = None) -> dict:
     import os
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    try:
-        from database import mongo_utils
-        session_id = mongo_utils.generate_session_id()
-    except ImportError:
-        session_id = "temp_session"
+    
+    if explicit_session_id:
+        session_id = explicit_session_id
+    else:
+        try:
+            from database import mongo_utils
+            session_id = mongo_utils.generate_session_id()
+        except ImportError:
+            session_id = "temp_session"
 
+    frames_data = None
+    
     if source_path:
-        from pose_extractor import extract_landmarks_from_video, save_to_csv
+        from src.pose_extractor import extract_landmarks_from_video, save_to_csv
         print(f"\n{Colors.BLUE}Step 1: Running Pose Extractor (API/File)...{Colors.ENDC}")
+        publish_progress(session_id, "Extracting Joint Landmarks", 15)
         video_name = video_name or os.path.splitext(os.path.basename(source_path))[0]
-        frames_data, key_image_paths = extract_landmarks_from_video(source_path, is_webcam=False, save_annotated_video=True, video_name=video_name)
+        frames_data = extract_landmarks_from_video(source_path, is_webcam=False, save_annotated_video=True, video_name=video_name)
         save_to_csv(frames_data, source_path, is_webcam=False, video_name=video_name)
-    elif not video_name:
-        from pose_extractor import choose_input_source_interactively, extract_landmarks_from_video, save_to_csv
-        
-        print(f"{Colors.BLUE}No video_name provided. Launching full pipeline from the beginning...{Colors.ENDC}")
+    else:
+        # If no source_path is provided, ALWAYS require interactive selection.
+        # This completely kills the dead "re-process by name" path.
+        from src.pose_extractor import choose_input_source_interactively, extract_landmarks_from_video, save_to_csv
+        print(f"{Colors.BLUE}No source_path provided. Launching full pipeline from the beginning...{Colors.ENDC}")
         print(f"\n{Colors.BLUE}Step 1: Running Pose Extractor...{Colors.ENDC}")
         source, is_webcam = choose_input_source_interactively()
         video_name = "webcam_session" if is_webcam else os.path.splitext(os.path.basename(source))[0]
-        frames_data, key_image_paths = extract_landmarks_from_video(source, is_webcam=is_webcam, save_annotated_video=True, video_name=video_name)
+        frames_data = extract_landmarks_from_video(source, is_webcam=is_webcam, save_annotated_video=True, video_name=video_name)
         save_to_csv(frames_data, source, is_webcam=is_webcam, video_name=video_name)
         
+    actual_video_path = source_path if source_path else source
+        
     print(f"\n{Colors.BLUE}Step 2: Running Biomechanics Analyzer...{Colors.ENDC}")
-    from biomechanics.analyzer import run_biomechanics_only
-    run_biomechanics_only(video_name, athlete_id, session_id)
+    publish_progress(session_id, "Analyzing Movement Mechanics", 40)
+    from src.biomechanics.analyzer import run_biomechanics_only
+    run_biomechanics_only(video_name, athlete_id, session_id, frames_data=frames_data)
 
     print(f"\n{Colors.BLUE}Step 3: Running Risk Scoring Engine...{Colors.ENDC}")
+    publish_progress(session_id, "Generating AI Risk Profile", 65)
     # Import and run risk scoring silently
-    from risk_scoring.engine import run_risk_scoring
+    from src.risk_scoring.engine import run_risk_scoring
     risk_df = run_risk_scoring(video_name, athlete_id, session_id, quiet=True)
     if risk_df.empty:
-        print("Error: Risk scoring failed to produce data.")
+        logger.error("Risk scoring failed to produce data.")
         sys.exit(1)
     
-    risk_data = risk_df.iloc[0].to_dict()
+    risk_data = risk_df.replace({np.nan: None}).iloc[0].to_dict()
 
     # The risk data is returned to the API via the return statement below.
 
-    # ==========================================
-    # CLOUDINARY UPLOAD (DISABLED BY USER REQUEST)
-    # Cloudinary is reserved strictly for profile photos to save storage/bandwidth.
-    # ==========================================
     video_url = None
-    # from config import ANNOTATED_VIDEO_DIR
-    # annotated_video_path = os.path.join(ANNOTATED_VIDEO_DIR, f"{video_name}_annotated.mp4")
-    # if os.path.exists(annotated_video_path):
-    #     print(f"\n{Colors.BLUE}Uploading Annotated Video to Cloudinary...{Colors.ENDC}")
-    #     try:
-    #         from database.cloud_storage import upload_video
-    #         from database.mongo_utils import update_session_video_url
-    #         video_url = upload_video(annotated_video_path)
-    #         if video_url:
-    #             update_session_video_url(session_id, video_url)
-    #     except ImportError:
-    #         print("Could not import Cloudinary modules. Skipping upload.")
 
     # ==========================================
     # KEY MOMENTS IMAGES (BASE64)
     # ==========================================
-    if 'key_image_paths' in locals() and key_image_paths:
-        import base64
-        key_moments_b64 = []
-        print(f"\n{Colors.BLUE}Encoding Key Moment Images to Base64...{Colors.ENDC}")
-        for img_path in key_image_paths:
-            if os.path.exists(img_path):
-                try:
-                    with open(img_path, "rb") as image_file:
-                        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-                        key_moments_b64.append(encoded_string)
-                except Exception as e:
-                    print(f"Error encoding {img_path}: {e}")
+    # 1. Load biomechanics CSV to get AI-detected squat frames
+    from src.config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR, ANNOTATED_VIDEO_DIR, RISK_SCORE_OUTPUT_DIR, ANNOTATED_IMAGES_DIR
+    from src.risk_scoring.rules import get_key_moment_frames
+    
+    biomechanics_csv = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_biomechanics.csv")
+    if os.path.exists(biomechanics_csv):
+        bio_df = pd.read_csv(biomechanics_csv)
+        key_frames = get_key_moment_frames(bio_df, max_frames=4)
         
-        if key_moments_b64:
+        with open("debug_log.txt", "a") as f: f.write(f"key_frames found: {key_frames}\n")
+        
+        # 2. Capture those precise frames instantly
+        if key_frames:
+            from src.capture_key_frames import capture_frames
+            key_image_paths = capture_frames(actual_video_path, key_frames, ANNOTATED_IMAGES_DIR, video_name)
+            with open("debug_log.txt", "a") as f: f.write(f"key_image_paths generated: {key_image_paths}\n")
+        else:
+            key_image_paths = []
+    else:
+        with open("debug_log.txt", "a") as f: f.write("biomechanics_csv not found\n")
+        key_image_paths = []
+
+    if key_image_paths:
+        key_moments_urls = []
+        print(f"\n{Colors.BLUE}Uploading Key Moment Images to Cloudinary...{Colors.ENDC}")
+        publish_progress(session_id, "Capturing Visual Evidence", 85)
+        try:
+            from database.cloud_storage import upload_image
+            for i, img_path in enumerate(key_image_paths):
+                if os.path.exists(img_path):
+                    url = upload_image(img_path, public_id=f"session_{session_id}_frame_{i}")
+                    with open("debug_log.txt", "a") as f: f.write(f"upload_image({img_path}) returned {url}\n")
+                    if url:
+                        key_moments_urls.append(url)
+                else:
+                    with open("debug_log.txt", "a") as f: f.write(f"img_path not found: {img_path}\n")
+        except ImportError:
+            logger.warning("Could not import Cloudinary modules. Skipping image uploads.")
+        
+        if key_moments_urls:
+            with open("key_moments_debug.txt", "w") as f:
+                f.write(f"URLs: {key_moments_urls}")
             try:
                 from database.mongo_utils import update_session_key_moments
-                update_session_key_moments(session_id, key_moments_b64)
-                print(f"{Colors.GREEN}Successfully stored {len(key_moments_b64)} key moments in MongoDB.{Colors.ENDC}")
+                update_session_key_moments(session_id, key_moments_urls)
+                logger.info(f"Successfully stored {len(key_moments_urls)} key moment URLs in MongoDB.")
             except Exception as e:
-                print(f"Error storing key moments in DB: {e}")
+                logger.error(f"Error storing key moments in DB: {e}")
 
     # ==========================================
     # CSV CLEANUP
     # ==========================================
-    from config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR, ANNOTATED_VIDEO_DIR, RISK_SCORE_OUTPUT_DIR, ANNOTATED_IMAGES_DIR
     
     landmarks_csv = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_landmarks.csv")
-    biomechanics_csv = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_biomechanics.csv")
     summary_csv = os.path.join(SUMMARY_OUTPUT_DIR, f"{video_name}_summary.csv")
     risk_score_csv = os.path.join(RISK_SCORE_OUTPUT_DIR, f"{video_name}_risk_score.csv")
     annotated_video = os.path.join(ANNOTATED_VIDEO_DIR, f"{video_name}_annotated.mp4")
@@ -128,31 +163,24 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     for file_path in [landmarks_csv, biomechanics_csv, summary_csv, risk_score_csv, annotated_video]:
         try:
             if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"Deleted {os.path.basename(file_path)}")
+                # os.remove(file_path)
+                logger.info(f"Skipped deleting {os.path.basename(file_path)}")
         except Exception as e:
-            print(f"Failed to delete {file_path}: {e}")
+            logger.warning(f"Failed to delete {file_path}: {e}")
 
     # Delete key moment images — use glob as a safety net in case key_image_paths wasn't populated
     import glob
     img_pattern = os.path.join(ANNOTATED_IMAGES_DIR, f"{video_name}_frame_*.jpg")
     for img_path in glob.glob(img_pattern):
         try:
-            os.remove(img_path)
-            print(f"Deleted {os.path.basename(img_path)}")
+            # os.remove(img_path)
+            logger.info(f"Skipped deleting {os.path.basename(img_path)}")
         except Exception as e:
-            print(f"Failed to delete {img_path}: {e}")
+            logger.warning(f"Failed to delete {img_path}: {e}")
 
     print(f"\n{Colors.BOLD}{Colors.GREEN}Pipeline complete!{Colors.ENDC}")
+    publish_progress(session_id, "Analysis Complete", 100)
     
-    # Safely try to remove empty directories
-    directories_to_check = [SUMMARY_OUTPUT_DIR, CSV_OUTPUT_DIR]
-    for directory in directories_to_check:
-        if os.path.exists(directory):
-            try:
-                os.rmdir(directory)
-            except OSError:
-                pass # Directory not empty, which is fine
 
     # Return summary data for the API
     return {

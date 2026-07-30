@@ -27,28 +27,35 @@ LANDMARK_NAMES = [
     "left_foot_index", "right_foot_index",
 ]
 
-# Folder paths (relative to project root)
-RAW_VIDEOS_DIR = "data/raw_videos"
-CSV_OUTPUT_DIR = "outputs/csv's"
-ANNOTATED_VIDEO_DIR = "outputs/annotated_videos"
-SUMMARY_OUTPUT_DIR = "outputs/csv's/summary"
-
-# Athlete profile (manually filled in) -- provides Historical Injury Factors
-# and Training Load data, which cannot be derived from video.
-ATHLETE_PROFILE_PATH = "data/profiles/athlete_profile.csv"
-
-# Where the final risk score results get saved
-RISK_SCORE_OUTPUT_DIR = "outputs/risk_scores"
-
-# Where the final recommendations get saved
-RECOMMENDATION_OUTPUT_DIR = "outputs/recommendations"
-
-# Where key moment annotated images are temporarily saved
-ANNOTATED_IMAGES_DIR = "outputs/annotated_images"
-
 import os
 from dotenv import load_dotenv
 
+# Get the absolute path to the root of the project (parent of 'src' folder)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Folder paths (absolute based on project root)
+RAW_VIDEOS_DIR = os.path.join(PROJECT_ROOT, "data", "raw_videos")
+CSV_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs", "csv's")
+ANNOTATED_VIDEO_DIR = os.path.join(PROJECT_ROOT, "outputs", "annotated_videos")
+SUMMARY_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs", "csv's", "summary")
+
+# Athlete profile (manually filled in) -- provides Historical Injury Factors
+# and Training Load data, which cannot be derived from video.
+ATHLETE_PROFILE_PATH = os.path.join(PROJECT_ROOT, "data", "profiles", "athlete_profile.csv")
+
+# Where the final risk score results get saved
+RISK_SCORE_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs", "risk_scores")
+
+# Where the final recommendations get saved
+RECOMMENDATION_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs", "recommendations")
+
+# Where key moment annotated images are temporarily saved
+ANNOTATED_IMAGES_DIR = os.path.join(PROJECT_ROOT, "outputs", "annotated_images")
+
+# Model path for MediaPipe
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "pose_landmarker_full.task")
+
+# Load environment variables
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")

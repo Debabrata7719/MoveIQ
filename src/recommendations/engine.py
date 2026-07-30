@@ -18,16 +18,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Add the project root to path (for database imports)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config import RISK_SCORE_OUTPUT_DIR, RECOMMENDATION_OUTPUT_DIR
+from src.config import RISK_SCORE_OUTPUT_DIR, RECOMMENDATION_OUTPUT_DIR
 
 try:
     from database import mongo_utils
+    MONGO_AVAILABLE = True
 except ImportError:
-    pass
+    MONGO_AVAILABLE = False
 
 # --- Load .env file (GROQ_API_KEY, LANGCHAIN_* variables for LangSmith tracing) ---
 load_dotenv()
 
+
+from src.logger import get_logger
+
+logger = get_logger("recommendations_engine")
 
 from recommendations.prompts import (
     CategoryRecommendation,
@@ -45,17 +50,31 @@ def load_risk_data(state: RecommendationState) -> RecommendationState:
     session_id = state.get("session_id")
     video_name = state["video_name"]
     
-    try:
-        # Load from MongoDB first
-        risk_doc = mongo_utils.get_risk_score(session_id)
-        if not risk_doc:
-            raise ValueError("No risk document found in MongoDB")
-            
-        row_dict = risk_doc.get("risk_data", {})
-        flagged_raw = row_dict.get("flagged_issues", "None")
-    except Exception as e:
-        # Fallback to CSV if DB fails or isn't available
-        print(f"Failed to load from MongoDB ({e}), falling back to CSV")
+    if MONGO_AVAILABLE:
+        try:
+            # Load from MongoDB first
+            risk_doc = mongo_utils.get_risk_score(session_id)
+            if not risk_doc:
+                raise ValueError("No risk document found in MongoDB")
+                
+            row_dict = risk_doc.get("risk_data", {})
+            flagged_raw = row_dict.get("flagged_issues", "None")
+        except Exception as e:
+            # Fallback to CSV if DB fails or isn't available
+            logger.warning(f"Failed to load from MongoDB ({e}), falling back to CSV")
+            risk_score_path = os.path.join(RISK_SCORE_OUTPUT_DIR, f"{video_name}_risk_score.csv")
+            try:
+                df = pd.read_csv(risk_score_path)
+                row = df.iloc[0]
+                row_dict = row.to_dict()
+                flagged_raw = row_dict.get("flagged_issues", "None")
+            except FileNotFoundError:
+                logger.warning("CSV not found either, returning empty data")
+                row_dict = {}
+                flagged_raw = "None"
+    else:
+        # Fallback to CSV if DB isn't available
+        logger.warning("MongoDB not available, falling back to CSV")
         risk_score_path = os.path.join(RISK_SCORE_OUTPUT_DIR, f"{video_name}_risk_score.csv")
         try:
             df = pd.read_csv(risk_score_path)
@@ -63,14 +82,24 @@ def load_risk_data(state: RecommendationState) -> RecommendationState:
             row_dict = row.to_dict()
             flagged_raw = row_dict.get("flagged_issues", "None")
         except FileNotFoundError:
-            print("CSV not found either, returning empty data")
+            logger.warning("CSV not found either, returning empty data")
             row_dict = {}
             flagged_raw = "None"
 
-    if flagged_raw == "None" or pd.isna(flagged_raw):
+    import json
+    if isinstance(flagged_raw, list):
+        # Native MongoDB format
+        flagged_issues = flagged_raw
+    elif flagged_raw == "None" or pd.isna(flagged_raw):
         flagged_issues = []
     else:
-        flagged_issues = [issue.strip() for issue in str(flagged_raw).split("|")]
+        # CSV fallback format
+        try:
+            # Try parsing it as JSON first
+            flagged_issues = json.loads(flagged_raw)
+        except Exception:
+            # Absolute legacy fallback for old pipe-delimited CSVs
+            flagged_issues = [{"category": "general", "issue": issue.strip()} for issue in str(flagged_raw).split("|")]
 
     state["risk_data"] = row_dict
     state["flagged_issues"] = flagged_issues
@@ -84,29 +113,18 @@ def load_risk_data(state: RecommendationState) -> RecommendationState:
 def categorize_issues(state: RecommendationState) -> RecommendationState:
     categorized: Dict[str, List[str]] = {}
 
-    for issue in state["flagged_issues"]:
-        issue_lower = issue.lower()
-
-        if "rom" in issue_lower and "too low" in issue_lower:
-            category = "restricted_rom"
-        elif "rom" in issue_lower and "too high" in issue_lower:
-            category = "unstable_rom"
-        elif "joint_alignment" in issue_lower:
-            category = "poor_alignment"
-        elif "balance_sway" in issue_lower:
-            category = "balance_issue"
-        elif "symmetry_avg" in issue_lower:
-            category = "asymmetry"
-        elif "fatigue" in issue_lower or "dropped by" in issue_lower:
-            category = "fatigue"
-        elif "previous" in issue_lower and "injury" in issue_lower:
-            category = "injury_history"
-        elif "training load" in issue_lower:
-            category = "high_training_load"
-        else:
-            category = "general"
-
-        categorized.setdefault(category, []).append(issue)
+    for flag_dict in state.get("flagged_issues", []):
+        if not isinstance(flag_dict, dict):
+            # Fallback for old CSV strings if needed, though we moved to MongoDB
+            continue
+            
+        category = flag_dict.get("category", "general")
+        issue_text = flag_dict.get("issue", "Unknown issue")
+        
+        if category not in categorized:
+            categorized[category] = []
+            
+        categorized[category].append(issue_text)
 
     state["categorized_issues"] = categorized
     return state
@@ -140,7 +158,21 @@ def generate_recommendation(state: RecommendationState) -> RecommendationState:
         "recommended_exercises": state["recommended_exercises"],
     })
 
-    state["structured_summary"] = response.model_dump()
+    structured_summary = response.model_dump()
+    
+    # BUG FIX 13: Strict validation to prevent LLM hallucinations
+    valid_exercises = {
+        ex for exercises in state["recommended_exercises"].values() 
+        for ex in exercises
+    }
+    
+    for cat in structured_summary.get("categories", []):
+        cat["recommended_exercises"] = [
+            ex for ex in cat.get("recommended_exercises", []) 
+            if ex in valid_exercises
+        ]
+
+    state["structured_summary"] = structured_summary
     return state
 
 
@@ -166,15 +198,16 @@ def save_output(state: RecommendationState) -> RecommendationState:
         csv_path = os.path.join(RECOMMENDATION_OUTPUT_DIR, f"{video_name}_recommendations.csv")
         pd.DataFrame(rows).to_csv(csv_path, index=False)
         state["output_path"] = csv_path
-        print(f"Saved recommendations CSV to: {csv_path}")
+        logger.info(f"Saved recommendations CSV to: {csv_path}")
 
     # Save structured to MongoDB
     summary = state["structured_summary"]
-    try:
-        if session_id:
-            mongo_utils.save_recommendations(session_id, summary)
-    except Exception as e:
-        print(f"Failed to save recommendations to MongoDB: {e}")
+    if MONGO_AVAILABLE:
+        try:
+            if session_id:
+                mongo_utils.save_recommendations(session_id, summary)
+        except Exception as e:
+            logger.error(f"Failed to save recommendations to MongoDB: {e}")
 
     # Build the full text report string
     risk_data = state["risk_data"]
@@ -213,12 +246,13 @@ def save_output(state: RecommendationState) -> RecommendationState:
     full_report_string = "\n".join(dashboard_text)
 
     # Save text report to MongoDB
-    try:
-        if session_id:
-            mongo_utils.save_full_report(session_id, full_report_string)
-            print(f"Saved full text report to MongoDB (session: {session_id})")
-    except Exception as e:
-        print(f"Failed to save full text report to MongoDB: {e}")
+    if MONGO_AVAILABLE:
+        try:
+            if session_id:
+                mongo_utils.save_full_report(session_id, full_report_string)
+                logger.info(f"Saved full text report to MongoDB (session: {session_id})")
+        except Exception as e:
+            logger.error(f"Failed to save full text report to MongoDB: {e}")
 
     return state
 
@@ -318,7 +352,7 @@ if __name__ == "__main__":
                 os.remove(file_path)
                 deleted_count += 1
             except Exception as e:
-                print(f"Warning: Could not delete {file_path}: {e}")
+                logger.warning(f"Could not delete {file_path}: {e}")
                 
     # Safely try to remove empty directories
     directories_to_check = [RISK_SCORE_OUTPUT_DIR, RECOMMENDATION_OUTPUT_DIR]
@@ -330,4 +364,4 @@ if __name__ == "__main__":
                 pass # Directory not empty, which is fine
                 
     if deleted_count > 0:
-        print(f"\nFinal Cleanup: Deleted {deleted_count} CSV files and empty folders. All data is now exclusively in MongoDB!")
+        logger.info(f"Final Cleanup: Deleted {deleted_count} CSV files and empty folders. All data is now exclusively in MongoDB!")
