@@ -325,7 +325,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
             )}
 
             {mode === 'register' && !otpSent && (
-              <>
+              <div className="flex flex-col gap-4">
                 <button 
                   type="button" 
                   onClick={() => {
@@ -343,7 +343,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                   <span className="font-bold text-[14px] text-[#0f172a]">Sign up with Google</span>
                 </button>
 
-                <div className="flex flex-col gap-1.5 mt-4 mb-2">
+                <div className="flex flex-col gap-1.5">
                   <label className="text-[13px] font-bold text-[#0F172A]">Choose Workspace Role</label>
                   <div className="flex gap-2 p-1.5 bg-[#f2f4f8] rounded-xl border border-[#c3c6d8]">
                     <button
@@ -374,7 +374,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                   <span className="px-3 text-xs text-gray-400 uppercase tracking-widest font-bold">or</span>
                   <div className="flex-grow border-t border-[#c3c6d7]/60"></div>
                 </div>
-              </>
+              </div>
             )}
 
             {mode === 'register' && !otpSent && (
