@@ -275,3 +275,11 @@ select option {
 .dark .card-level-1 {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
 }
+
+/* Force cursor pointer on all clickable elements globally */
+button, 
+[role="button"],
+a,
+select {
+  cursor: pointer !important;
+}
