@@ -24,3 +24,6 @@ scipy
 celery
 psycopg2-binary
 httpx
+email-validator
+pydantic[email]
+websockets
