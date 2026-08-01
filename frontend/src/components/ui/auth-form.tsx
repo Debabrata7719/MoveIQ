@@ -239,6 +239,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
           <button
             onClick={onBack}
             className="absolute top-6 left-6 flex items-center gap-2 text-xs font-bold text-[#475569] hover:text-[#004ccd] bg-[#f2f4f8] hover:bg-[#e2e8f0] px-3.5 py-2 rounded-xl transition-all shadow-xs z-20 cursor-pointer"
+            style={{ cursor: 'pointer' }}
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Home
@@ -259,6 +260,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
             <button
               onClick={() => switchMode('login')}
               className="mb-6 flex items-center gap-2 text-sm text-[#475569] hover:text-[#004ccd] transition-colors self-start cursor-pointer"
+              style={{ cursor: 'pointer' }}
             >
               <ArrowLeft className="w-4 h-4" /> Back to login
             </button>
@@ -303,6 +305,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                     window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/google/login?role=athlete`;
                   }}
                   className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white border border-[#c3c6d7] rounded-xl hover:bg-[#f2f4f8] transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#004ccd] focus:ring-offset-1 cursor-pointer"
+                  style={{ cursor: 'pointer' }}
                 >
                   <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -329,6 +332,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                     window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/google/login?role=${role}`;
                   }}
                   className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white border border-[#c3c6d7] rounded-xl hover:bg-[#f2f4f8] transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#004ccd] focus:ring-offset-1 cursor-pointer"
+                  style={{ cursor: 'pointer' }}
                 >
                   <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -339,22 +343,30 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                   <span className="font-bold text-[14px] text-[#0f172a]">Sign up with Google</span>
                 </button>
 
-                {/* Role Selector Toggle */}
-                <div className="flex bg-[#f2f4f8] p-1 rounded-xl mt-3 mb-1 border border-[#c3c6d7]/40">
-                  <button
-                    type="button"
-                    onClick={() => setRole('athlete')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${role === 'athlete' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                  >
-                    I'm an Athlete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('coach')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${role === 'coach' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                  >
-                    I'm a Coach
-                  </button>
+                <div className="flex flex-col gap-1.5 mt-4 mb-2">
+                  <label className="text-[13px] font-bold text-[#0F172A]">Choose Workspace Role</label>
+                  <div className="flex gap-2 p-1.5 bg-[#f2f4f8] rounded-xl border border-[#c3c6d8]">
+                    <button
+                      type="button"
+                      onClick={() => setRole('athlete')}
+                      className={`flex-1 py-2.5 px-3 text-[13px] font-bold rounded-lg transition-all cursor-pointer ${
+                        role === 'athlete' ? 'bg-white text-[#004ccd] shadow-sm' : 'text-[#475569] hover:text-[#004ccd]'
+                      }`}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Athlete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRole('coach')}
+                      className={`flex-1 py-2.5 px-3 text-[13px] font-bold rounded-lg transition-all cursor-pointer ${
+                        role === 'coach' ? 'bg-white text-[#004ccd] shadow-sm' : 'text-[#475569] hover:text-[#004ccd]'
+                      }`}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Coach
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center my-1">
@@ -384,31 +396,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
               </div>
             )}
 
-            {mode === 'register' && !otpSent && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[13px] font-bold text-[#0F172A]">Choose Workspace Role</label>
-                <div className="flex gap-2 p-1.5 bg-[#f2f4f8] rounded-xl border border-[#c3c6d8]">
-                  <button
-                    type="button"
-                    onClick={() => setRole('athlete')}
-                    className={`flex-1 py-2.5 px-3 text-[13px] font-bold rounded-lg transition-all ${
-                      role === 'athlete' ? 'bg-white text-[#004ccd] shadow-sm' : 'text-[#475569] hover:text-[#004ccd]'
-                    }`}
-                  >
-                    Athlete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('coach')}
-                    className={`flex-1 py-2.5 px-3 text-[13px] font-bold rounded-lg transition-all ${
-                      role === 'coach' ? 'bg-white text-[#004ccd] shadow-sm' : 'text-[#475569] hover:text-[#004ccd]'
-                    }`}
-                  >
-                    Coach
-                  </button>
-                </div>
-              </div>
-            )}
+
 
             {(!otpSent || mode === 'login') && (
               <div className="flex flex-col gap-1.5">
@@ -541,9 +529,10 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
             )}
 
             <button 
-              className="w-full bg-[#004ccd] text-white font-bold py-3.5 px-4 rounded-xl shadow-md hover:bg-[#003da9] active:scale-[0.99] transition-all focus:outline-none focus:ring-2 focus:ring-[#004ccd] focus:ring-offset-2 flex items-center justify-center gap-2 mt-2" 
+              className="w-full bg-[#004ccd] text-white font-bold py-3.5 px-4 rounded-xl shadow-md hover:bg-[#003da9] active:scale-[0.99] transition-all focus:outline-none focus:ring-2 focus:ring-[#004ccd] focus:ring-offset-2 flex items-center justify-center gap-2 mt-2 cursor-pointer" 
               type="submit"
               disabled={loading}
+              style={{ cursor: 'pointer' }}
             >
               {loading && <Loader2 className="w-5 h-5 animate-spin" />}
               {mode === 'login' ? 'Sign in' :
@@ -562,6 +551,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                 <button
                   onClick={() => switchMode('register')}
                   className="text-[#004ccd] font-bold hover:underline focus:outline-none cursor-pointer"
+                  style={{ cursor: 'pointer' }}
                 >
                   Sign up, it's free
                 </button>
@@ -572,6 +562,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                 <button
                   onClick={() => switchMode('login')}
                   className="text-[#004ccd] font-bold hover:underline focus:outline-none cursor-pointer"
+                  style={{ cursor: 'pointer' }}
                 >
                   Log in
                 </button>
