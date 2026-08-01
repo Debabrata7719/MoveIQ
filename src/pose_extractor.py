@@ -194,10 +194,13 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
 
         # Show a live preview window only if explicitly debugging or using webcam
         if os.environ.get("DEBUG_PREVIEW") == "1" or is_webcam:
-            cv2.imshow("Pose Extraction - press 'q' to stop", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                logger.info("Stopped by user (pressed 'q').")
-                break
+            try:
+                cv2.imshow("Pose Extraction - press 'q' to stop", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    logger.info("Stopped by user (pressed 'q').")
+                    break
+            except Exception as e:
+                logger.warning(f"Could not show preview window (likely headless environment): {e}")
 
         frame_number += 1
 
@@ -205,7 +208,10 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
     cap.release()
     if video_writer is not None:
         video_writer.release()
-    cv2.destroyAllWindows()
+    try:
+        cv2.destroyAllWindows()
+    except Exception:
+        pass  # Fails in headless OpenCV environments
     pose.close()
 
     logger.info(f"Finished processing. Total frames: {frame_number}")
