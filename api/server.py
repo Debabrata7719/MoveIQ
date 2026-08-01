@@ -51,7 +51,7 @@ def root():
     """Redirects the root URL to the Swagger documentation."""
     return RedirectResponse(url="/docs")
 
-@app.get("/api/health", tags=["health"])
+@app.api_route("/api/health", methods=["GET", "HEAD"], tags=["health"])
 def health_check():
     """
     Health check endpoint.
