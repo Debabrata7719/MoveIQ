@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, User, Settings, LogOut, Activity, FileText, Bell, Users, UserPlus, UploadCloud, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, User, Settings, LogOut, Activity, FileText, Bell, Users, UserPlus, UploadCloud, FolderOpen, Inbox } from 'lucide-react';
 
 export type ViewType = 
     | 'dashboard' 
@@ -57,7 +57,7 @@ export const Sidebar = ({
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'my_athletes', label: 'My Athletes', icon: Users },
         { id: 'teams', label: 'Teams', icon: FolderOpen },
-        { id: 'notifications', label: 'Notifications', icon: Bell },
+        { id: 'notifications', label: 'Requests', icon: Inbox },
         { id: 'add_athlete', label: 'Add Athlete', icon: UserPlus },
         { id: 'upload_video', label: 'Upload Video', icon: UploadCloud },
         { id: 'settings', label: 'Settings', icon: Settings },

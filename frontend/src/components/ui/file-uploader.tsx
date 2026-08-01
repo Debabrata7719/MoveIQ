@@ -103,14 +103,6 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
         onUploadStart();
     }
     
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) return prev;
-        const increment = prev < 50 ? 5 : prev < 80 ? 2 : 1;
-        return prev + increment;
-      });
-    }, 500);
-    
     try {
       const formData = new FormData();
       formData.append('video', selectedFile);
@@ -126,30 +118,65 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
         body: formData,
       });
 
-      clearInterval(progressInterval);
-      setProgress(100); 
-      
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Failed to analyze video');
+        throw new Error(data.detail || 'Failed to start analysis');
       }
 
-      setToast({ message: 'Video analyzed successfully!', type: 'success' });
-      
-      if (onUploadSuccess) {
-        setTimeout(() => {
-          onUploadSuccess(data);
-        }, 500);
-      }
+      // WebSocket listener
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
+      const wsHost = apiUrl.replace(/^https?:\/\//, '');
+      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}`);
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        
+        if (msg.progress) {
+          setProgress(msg.progress);
+        }
+        
+        if (msg.step === "Analysis Complete") {
+          ws.close();
+          setToast({ message: 'Video analyzed successfully!', type: 'success' });
+          
+          try {
+            // Fetch the final session data
+            const res = await fetch(`${apiUrl}/api/sessions/${data.session_id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const sessionData = await res.json();
+              if (onUploadSuccess) {
+                setTimeout(() => onUploadSuccess(sessionData), 500);
+              }
+            }
+          } catch (e) {
+             console.error("Failed to fetch final session", e);
+          } finally {
+            setUploading(false);
+          }
+        }
+        
+        if (msg.step === "ERROR") {
+          ws.close();
+          setToast({ message: msg.error || 'Pipeline failed', type: 'error' });
+          setUploading(false);
+          setProgress(0);
+        }
+      };
+
+      ws.onerror = () => {
+        setToast({ message: 'WebSocket connection failed.', type: 'error' });
+        setUploading(false);
+        setProgress(0);
+      };
+
     } catch (err: any) {
-      clearInterval(progressInterval);
       setToast({ message: err.message, type: 'error' });
       setProgress(0);
-    } finally {
-      setTimeout(() => {
-        setUploading(false);
-      }, 500);
+      setUploading(false);
     }
   };
 

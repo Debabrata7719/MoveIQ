@@ -60,9 +60,20 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
   };
 
   // Friendly translation of issues for athlete
-  const parseAthleteFriendlyIssues = (s: string) => {
-    if (!s || s === 'None') return [];
+  const parseAthleteFriendlyIssues = (input: any) => {
+    if (!input || input === 'None') return [];
     const issuesList: { title: string; explanation: string; tip: string; badge: string; color: string; bg: string }[] = [];
+    
+    // Convert to a single string for simple matching
+    let s = "";
+    if (typeof input === "string") {
+      s = input;
+    } else if (Array.isArray(input)) {
+      // If it's an array of dicts, extract the "issue" or stringify
+      s = input.map(i => typeof i === 'string' ? i : (i.issue || JSON.stringify(i))).join(" ");
+    } else {
+      s = JSON.stringify(input);
+    }
     
     const lower = s.toLowerCase();
     if (lower.includes('knee')) {
@@ -92,7 +103,7 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
         color: c.bl700, bg: c.bl50
       });
     }
-    if (issuesList.length === 0 && s !== 'None') {
+    if (issuesList.length === 0 && lower !== 'none' && lower.length > 0) {
       issuesList.push({
         title: 'Movement Optimization Note',
         explanation: s.replace(/_/g, ' '),
@@ -254,16 +265,29 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
               ))}
             </div>
           </div>
-
-          <PF page={1} total={2} />
+          <PF page={1} total={3} />
         </div>
 
-        {/* ═══ PAGE 2: Your Action Plan & Next Steps ═══ */}
-        <div className="pdf-page" style={{ padding: '40px', paddingBottom: '60px', position: 'relative', backgroundColor: c.white, minHeight: '1122px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        {/* ═══ PAGE 2: Key Moments & Corrective Exercises ═══ */}
+        <div className="pdf-page" style={{ padding: '40px', paddingBottom: '60px', position: 'relative', backgroundColor: c.white, pageBreakAfter: 'always', minHeight: '1122px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <PH />
 
-            <SecHead n="4" title="Your Personalized Corrective Exercises" />
+            {/* ── Section 4: AI Key Moments ── */}
+            {session.key_moments && session.key_moments.length > 0 && (
+              <div style={{ marginBottom: '28px' }}>
+                <SecHead n="4" title="AI-Detected Key Moments" />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  {session.key_moments.slice(0, 4).map((url: string, i: number) => (
+                    <div key={i} style={{ borderRadius: '8px', overflow: 'hidden', border: `1px solid ${c.slate200}` }}>
+                      <img src={url} alt={`Key moment ${i+1}`} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <SecHead n={session.key_moments && session.key_moments.length > 0 ? "5" : "4"} title="Your Personalized Corrective Exercises" />
             <p style={{ fontSize: '11px', color: c.slate600, marginBottom: '16px', lineHeight: '1.5' }}>
               Based on your biomechanics, our AI has prescribed these targeted drills. Integrate them into your warm-ups or recovery days to strengthen weak points and prevent injury.
             </p>
@@ -299,8 +323,15 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
                 </div>
               )}
             </div>
+          </div>
+          <PF page={2} total={3} />
+        </div>
 
-            <SecHead n="5" title="Your 7-Day Game Plan" />
+        {/* ═══ PAGE 3: Game Plan & Closing ═══ */}
+        <div className="pdf-page" style={{ padding: '40px', paddingBottom: '60px', position: 'relative', backgroundColor: c.white, minHeight: '1122px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <PH />
+            <SecHead n={session.key_moments && session.key_moments.length > 0 ? "6" : "5"} title="Your 7-Day Game Plan" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', marginBottom: '28px' }}>
               {['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'].map((d, i) => (
                 <div key={d} style={{ border: `1px solid ${c.slate200}`, borderRadius: '8px', overflow: 'hidden', textAlign: 'center' }}>
@@ -312,7 +343,6 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
               ))}
             </div>
 
-            {/* Motivational Close */}
             <div style={{ padding: '16px 20px', borderRadius: '10px', backgroundColor: c.bl50, border: `1px solid ${c.bl100}`, color: c.bl700, display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
               <span style={{ fontSize: '24px' }}>🏆</span>
               <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
@@ -322,11 +352,10 @@ export const PdfAthleteReport = React.forwardRef<HTMLDivElement, PdfAthleteRepor
           </div>
 
           <div>
-            {/* AI Medical Disclosure Line */}
             <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: c.slate900, color: c.white, fontSize: '9px', textAlign: 'center', lineHeight: '1.5', marginBottom: '16px' }}>
               <strong>AI Medical Disclosure:</strong> Recommendations generated using MoveIQ AI (Groq/Llama) — for guidance only, not a medical prescription. Consult a licensed physiotherapist or physician for persistent pain, swelling, or clinical injury diagnosis.
             </div>
-            <PF page={2} total={2} />
+            <PF page={3} total={3} />
           </div>
         </div>
 

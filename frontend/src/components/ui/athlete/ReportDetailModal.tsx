@@ -17,6 +17,19 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
     return session?.risk_data?.risk_category ?? 'Low Risk';
   };
 
+  const getIssuesString = (issues: any) => {
+    if (!issues) return 'Movement patterns analyzed by AI Biomechanics Engine.';
+    if (typeof issues === 'string') {
+      if (issues === 'None') return 'No issues flagged.';
+      return issues;
+    }
+    if (Array.isArray(issues)) {
+      if (issues.length === 0) return 'No issues flagged.';
+      return issues.map((i: any) => i.issue || i).join(', ');
+    }
+    return 'Movement patterns analyzed by AI Biomechanics Engine.';
+  };
+
   const getExercisesForRisk = (risk: string) => {
     if (risk === 'High Risk' || risk === 'Severe') {
       return [
@@ -114,8 +127,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
               AI Motion Findings
             </h4>
             <p className="p-4 bg-[#faf8ff] border-l-4 border-[#00379b] rounded-r-lg text-[#191b23]">
-              {session.risk_data?.flagged_issues ||
-                'Biomechanical vector tracking shows reduced lateral hip stability during terminal deceleration.'}
+              {getIssuesString(session.risk_data?.flagged_issues)}
             </p>
           </div>
 

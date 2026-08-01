@@ -22,6 +22,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return s?.risk_data?.risk_category ?? 'Low Risk';
   };
 
+  const getIssuesString = (issues: any) => {
+    if (!issues) return 'Movement patterns analyzed by AI Biomechanics Engine.';
+    if (typeof issues === 'string') {
+      if (issues === 'None') return 'No issues flagged.';
+      return issues;
+    }
+    if (Array.isArray(issues)) {
+      if (issues.length === 0) return 'No issues flagged.';
+      return issues.map((i: any) => i.issue || i).join(', ');
+    }
+    return 'Movement patterns analyzed by AI Biomechanics Engine.';
+  };
+
   const filtered = sessions.filter((s) => {
     if (filterRisk === 'All Reports') return true;
     return getRiskLabel(s).toLowerCase() === filterRisk.toLowerCase();
@@ -51,7 +64,7 @@ Risk Classification: ${getRiskLabel(s)}
 Peak Valgus Angle: ${s.risk_data?.valgus_angle || 0}°
 
 SUMMARY OF FINDINGS:
-${s.risk_data?.flagged_issues || 'Movement patterns analyzed by AI Biomechanics Engine.'}
+${getIssuesString(s.risk_data?.flagged_issues)}
 
 -----------------------------------------
 MoveIQ Injury Prevention System
@@ -267,7 +280,7 @@ MoveIQ Injury Prevention System
                     </div>
 
                     <p className="text-[13px] text-[#434654] line-clamp-2">
-                      {s.risk_data?.flagged_issues || 'Movement patterns analyzed by AI Biomechanics Engine.'}
+                      {getIssuesString(s.risk_data?.flagged_issues)}
                     </p>
                   </div>
                 </div>

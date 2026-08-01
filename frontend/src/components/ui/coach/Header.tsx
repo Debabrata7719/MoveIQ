@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, Upload, HelpCircle, Menu } from 'lucide-react';
+import { NotificationBell } from '../NotificationBell';
 
 interface HeaderProps {
   searchQuery: string;
@@ -11,6 +12,7 @@ interface HeaderProps {
   coachName?: string;
   coachTitle?: string;
   avatarUrl?: string;
+  token?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,7 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSupport,
   coachName = "Coach",
   coachTitle = "MoveIQ Coach",
-  avatarUrl
+  avatarUrl,
+  token
 }) => {
   return (
     <header className="sticky top-0 right-0 w-full z-30 flex justify-between items-center px-6 py-4 bg-[#f7f9fd]/90 backdrop-blur-md border-b border-[#c3c6d8]">
@@ -66,6 +69,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Trailing Actions & Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {token && <NotificationBell token={token} />}
+        
         <button
           onClick={() => setActiveTab('upload_video')}
           title="Upload Video"

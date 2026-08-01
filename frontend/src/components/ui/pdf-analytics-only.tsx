@@ -99,9 +99,20 @@ export const PdfAnalyticsOnly = React.forwardRef<HTMLDivElement, PdfAnalyticsOnl
     ankle_symmetry_avg: { label: 'Significant Ankle Asymmetry (L vs R)', why: 'Affects gait symmetry and energy efficiency.', priority: 'Medium' },
   };
 
-  const parseIssues = (s: string) => {
-    if (!s || s === 'None') return [];
-    return s.split(' | ').map(raw => {
+  const parseIssues = (input: any) => {
+    if (!input || input === 'None') return [];
+    
+    // Normalize to an array of raw strings
+    let rawIssues: string[] = [];
+    if (typeof input === 'string') {
+      rawIssues = input.split(' | ').filter(Boolean);
+    } else if (Array.isArray(input)) {
+      rawIssues = input.map(i => typeof i === 'string' ? i : (i.issue || JSON.stringify(i)));
+    } else {
+      rawIssues = [JSON.stringify(input)];
+    }
+
+    return rawIssues.map(raw => {
       const key = Object.keys(issueMap).find(k => raw.toLowerCase().includes(k));
       return key ? { ...issueMap[key], raw } : {
         label: raw.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()),

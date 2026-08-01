@@ -101,11 +101,40 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
       if (videoLabel) formData.append('custom_name', videoLabel);
 
       try {
-        setAnalysisStep(2);
-        await onUploadAndAnalyze(formData);
-        setAnalysisStep(3);
-        setIsAnalyzing(false);
-        setAnalysisDone(true);
+        setAnalysisStep(1);
+        const data = await onUploadAndAnalyze(formData);
+        
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
+        const wsHost = apiUrl.replace(/^https?:\/\//, '');
+        const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}`);
+
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          
+          if (msg.progress) {
+             if (msg.progress > 30 && analysisStep < 2) setAnalysisStep(2);
+             if (msg.progress > 60 && analysisStep < 3) setAnalysisStep(3);
+          }
+
+          if (msg.step === "Analysis Complete") {
+             ws.close();
+             setIsAnalyzing(false);
+             setAnalysisDone(true);
+          }
+
+          if (msg.step === "ERROR") {
+             ws.close();
+             setIsAnalyzing(false);
+             setErrorMsg(msg.error || "Analysis failed");
+          }
+        };
+
+        ws.onerror = () => {
+          setIsAnalyzing(false);
+          setErrorMsg("WebSocket connection failed.");
+        };
+
       } catch (err: any) {
         setIsAnalyzing(false);
         setErrorMsg(err?.message || "Analysis failed. Please check file format and backend service.");

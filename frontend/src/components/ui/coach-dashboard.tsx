@@ -579,6 +579,7 @@ MoveIQ Injury Prevention System
         coachName={userName || 'Coach'}
         coachTitle="MoveIQ Coach"
         avatarUrl={profilePictureUrl || undefined}
+        token={token}
       />
 
       <div className="flex-1">

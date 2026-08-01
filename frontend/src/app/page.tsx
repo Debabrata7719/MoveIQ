@@ -15,6 +15,7 @@ import { ReportsView as AthleteReportsView } from "@/components/ui/athlete/Repor
 import { ReportDetailModal } from "@/components/ui/athlete/ReportDetailModal";
 import { ExerciseDetailModal } from "@/components/ui/athlete/ExerciseDetailModal";
 import { OpsPortal } from "@/components/ui/ops/OpsPortal";
+import { NotificationBell } from "@/components/ui/NotificationBell";
 import { useState, useEffect } from "react";
 import { Loader2, Award, Users, Search, Send, ArrowLeft } from "lucide-react";
 
@@ -533,7 +534,14 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
         latestRisk={sessions.length > 0 && sessions[0].risk_data ? { score: sessions[0].risk_data.overall_health_score, category: sessions[0].risk_data.risk_category || 'Low Risk' } : null}
       />
 
-      <div className="flex-1 h-full overflow-y-auto">
+      <div className="flex-1 h-full overflow-y-auto relative">
+        
+        {/* Athlete Notification Bell (Floating Top Right) */}
+        {activeDashboard === 'athlete' && token && (
+          <div className="absolute top-4 right-4 z-40 bg-white/50 backdrop-blur-sm rounded-full p-1 border border-slate-200 shadow-sm">
+            <NotificationBell token={token} />
+          </div>
+        )}
         
         {/* ── Coach Dashboard Render ── */}
         {activeDashboard === 'coach' && ['dashboard', 'my_athletes', 'teams', 'notifications', 'add_athlete', 'upload_video'].includes(activeView) && (
@@ -568,9 +576,11 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
                     efficiency={dashboardData.risk_data?.biomechanical_efficiency_score || 0}
                     sessionsAnalyzed={1}
                     flaggedIssues={
-                      typeof dashboardData.risk_data?.flagged_issues === 'string' && dashboardData.risk_data?.flagged_issues !== 'None'
-                        ? dashboardData.risk_data.flagged_issues.split(' | ') 
-                        : []
+                      Array.isArray(dashboardData.risk_data?.flagged_issues)
+                        ? dashboardData.risk_data.flagged_issues.map((i: any) => i.issue || i)
+                        : typeof dashboardData.risk_data?.flagged_issues === 'string' && dashboardData.risk_data?.flagged_issues !== 'None'
+                          ? dashboardData.risk_data.flagged_issues.split(' | ') 
+                          : []
                     }
                     isProcessing={isProcessing}
                     videoUrl={dashboardData.video_url}
