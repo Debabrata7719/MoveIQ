@@ -39,12 +39,16 @@ def create_user(email: str, password_hash: str, full_name: str) -> Optional[int]
     if not conn:
         return None
     try:
+        import urllib.parse
+        safe_name = urllib.parse.quote(full_name or email.split('@')[0])
+        profile_pic = f"https://ui-avatars.com/api/?name={safe_name}&background=004ccd&color=fff"
+
         cursor = conn.cursor()
         query = """
-            INSERT INTO users (email, password_hash, full_name, is_active, created_at, updated_at) 
-            VALUES (%s, %s, %s, True, NOW(), NOW())
+            INSERT INTO users (email, password_hash, full_name, profile_picture_url, is_active, created_at, updated_at) 
+            VALUES (%s, %s, %s, %s, True, NOW(), NOW())
         """
-        cursor.execute(query, (email, password_hash, full_name))
+        cursor.execute(query, (email, password_hash, full_name, profile_pic))
         conn.commit()
         user_id = cursor.lastrowid
         return user_id
