@@ -12,6 +12,16 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from api.auth import get_assigned_athletes
+import math
+
+def replace_nan_with_none(obj):
+    if isinstance(obj, dict):
+        return {k: replace_nan_with_none(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [replace_nan_with_none(v) for v in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    return obj
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -58,22 +68,27 @@ def upload_and_analyze(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save video: {str(e)}")
 
-    # Run pipeline
+    # Enqueue Celery Task
     try:
-        result = run_pipeline(athlete_id=target_athlete_id, video_name=final_video_name, source_path=file_path)
+        from database import mongo_utils
+        session_id = mongo_utils.generate_session_id()
+        
+        from src.worker.tasks import process_video_task
+        task = process_video_task.delay(
+            file_path=file_path, 
+            athlete_id=target_athlete_id, 
+            video_name=final_video_name, 
+            session_id=session_id
+        )
         return {
-            "message": "Analysis complete",
-            "session_id": result["session_id"],
-            "video_name": final_video_name,
-            "risk_data": result["risk_data"],
-            "video_url": result["annotated_video_url"]
+            "message": "Analysis started in background",
+            "session_id": session_id,
+            "task_id": task.id
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
-    finally:
-        # Clean up the temporary video file, whether the pipeline succeeded or failed
         if os.path.exists(file_path):
             os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
 
 @router.get("/history")
 def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -81,10 +96,8 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_db_connection()
     sessions_col = db["sessions"]
     
-    # Exclude key_moments to save bandwidth for the history list
     sessions = list(sessions_col.find(
-        {"athlete_id": athlete_id}, 
-        {"key_moments": 0}
+        {"athlete_id": athlete_id}
     ).sort("created_at", -1))
     
     # Clean up ObjectIds and attach risk data and biomechanics
@@ -102,7 +115,7 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
         else:
             s["biomechanics"] = {}
         
-    return sessions
+    return replace_nan_with_none(sessions)
 
 @router.get("/{session_id}")
 def get_session(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -132,7 +145,7 @@ def get_session(session_id: str, current_user: Dict[str, Any] = Depends(get_curr
     else:
         session["biomechanics"] = {}
         
-    return session
+    return replace_nan_with_none(session)
 
 @router.delete("/{session_id}")
 def delete_session(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):

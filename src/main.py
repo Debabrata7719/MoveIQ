@@ -110,17 +110,17 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
         bio_df = pd.read_csv(biomechanics_csv)
         key_frames = get_key_moment_frames(bio_df, max_frames=4)
         
-        with open("debug_log.txt", "a") as f: f.write(f"key_frames found: {key_frames}\n")
+
         
         # 2. Capture those precise frames instantly
         if key_frames:
             from src.capture_key_frames import capture_frames
             key_image_paths = capture_frames(actual_video_path, key_frames, ANNOTATED_IMAGES_DIR, video_name)
-            with open("debug_log.txt", "a") as f: f.write(f"key_image_paths generated: {key_image_paths}\n")
+
         else:
             key_image_paths = []
     else:
-        with open("debug_log.txt", "a") as f: f.write("biomechanics_csv not found\n")
+
         key_image_paths = []
 
     if key_image_paths:
@@ -132,11 +132,10 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
             for i, img_path in enumerate(key_image_paths):
                 if os.path.exists(img_path):
                     url = upload_image(img_path, public_id=f"session_{session_id}_frame_{i}")
-                    with open("debug_log.txt", "a") as f: f.write(f"upload_image({img_path}) returned {url}\n")
+
                     if url:
                         key_moments_urls.append(url)
-                else:
-                    with open("debug_log.txt", "a") as f: f.write(f"img_path not found: {img_path}\n")
+
         except ImportError:
             logger.warning("Could not import Cloudinary modules. Skipping image uploads.")
         

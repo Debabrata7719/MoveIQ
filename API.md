@@ -111,7 +111,7 @@ Handles reading and upserting athlete historical and demographic data stored in 
 Bridges the web frontend to the core Python computer vision and biomechanical analysis pipeline (`src.main`).
 
 - **`POST /api/sessions/upload-and-analyze`** *(Requires JWT)*
-  - **Description**: Accepts a raw video upload, generates a unique UUID session, executes the MediaPipe pose extractor and biomechanical analyzer, stores frame-by-frame data in MongoDB, uploads the annotated video to Cloudinary, and deletes local temporary files.
+  - **Description**: Accepts a raw video upload, generates a unique UUID session, executes the MediaPipe pose extractor and biomechanical analyzer, stores frame-by-frame data in MongoDB, extracts Base64 key-moment frames, and deletes local temporary files.
   - **Payload**: `multipart/form-data` with form field `video` containing the MP4/MOV file.
   - **Response**: `200 OK`
     ```json
@@ -133,7 +133,7 @@ Bridges the web frontend to the core Python computer vision and biomechanical an
   - **Response**: `200 OK` — Array of session summary objects.
 
 - **`GET /api/sessions/{session_id}`** *(Requires JWT)*
-  - **Description**: Retrieves full metadata, joint angle charts, and annotated video URLs for a specific analysis session. Enforces strict ownership checks unless requested by an authorized coach or admin.
+  - **Description**: Retrieves full metadata, joint angle charts, and key-moment frames for a specific analysis session. Enforces strict ownership checks unless requested by an authorized coach or admin.
   - **Response**: `200 OK` — Full session document including `biomechanics` and `risk_scores` sub-objects.
 
 ---

@@ -1,5 +1,13 @@
 import os
 from dotenv import load_dotenv
+import sys
+import logging
+
+# Ensure we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.logger import get_logger
+logger = get_logger("cloud_storage")
 
 # Load environment variables BEFORE importing cloudinary
 load_dotenv()
@@ -16,40 +24,26 @@ if cloudinary_url:
         secure=True
     )
 
-def upload_video(file_path: str, public_id: str = None) -> str:
-    """
-    Uploads a video to Cloudinary.
-    
-    Args:
-        file_path (str): The local path to the video file (e.g., outputs/annotated_videos/video_annotated.mp4).
-        public_id (str): Optional string to explicitly name the file on Cloudinary.
-        
-    Returns:
-        str: The secure public URL of the uploaded video, or None if upload failed.
-    """
-    
+def upload_image(file_path: str, public_id: str = None) -> str:
+    """Uploads a lightweight image (like a key-moment JPEG) to Cloudinary."""
     if not os.getenv("CLOUDINARY_URL"):
-        print("Warning: CLOUDINARY_URL not found in environment variables. Upload skipped.")
+        logger.warning("CLOUDINARY_URL not found. Upload skipped.")
         return None
         
     if not os.path.exists(file_path):
-        print(f"Error: Video file {file_path} not found.")
         return None
 
-    print(f"Uploading {file_path} to Cloudinary...")
     try:
-        # Use resource_type 'video' specifically for mp4s
         upload_result = cloudinary.uploader.upload(
             file_path, 
-            resource_type="video",
+            resource_type="image",
             public_id=public_id,
-            folder="sports_injury_videos"
+            folder="sports_injury_key_moments",
+            transformation=[
+                {"width": 800, "crop": "scale"} # Ensure max width to save bandwidth
+            ]
         )
-        
-        secure_url = upload_result.get("secure_url")
-        print(f"Upload successful! URL: {secure_url}")
-        return secure_url
-        
+        return upload_result.get("secure_url")
     except Exception as e:
-        print(f"Failed to upload video to Cloudinary: {e}")
+        logger.error(f"Failed to upload image to Cloudinary: {e}")
         return None

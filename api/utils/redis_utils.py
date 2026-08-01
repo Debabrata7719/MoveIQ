@@ -12,9 +12,18 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 
-# Cloud Upstash Config
+# Cloud Upstash Config (REST)
 UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+
+# Real Redis Connection URI (for Celery & WebSockets)
+CLOUD_REDIS_URL = os.getenv("REDIS_CELERY_URL", "redis://localhost:6379/0")
+
+def get_redis_url() -> str:
+    """Returns the true connection URI for Celery or WebSockets."""
+    if USE_LOCAL_DB:
+        return f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    return CLOUD_REDIS_URL
 
 if USE_LOCAL_DB:
     # Local Connection Pool
@@ -87,4 +96,17 @@ def verify_otp(email: str, otp: str, prefix: str = "signup_otp") -> bool:
         return False
     except Exception as e:
         print(f"Failed to verify OTP in Redis: {e}")
+        return False
+
+def publish_notification_event(user_id: int, notification: dict) -> bool:
+    """Publishes a new notification payload to the user's Redis channel."""
+    try:
+        import json
+        redis_url = get_redis_url()
+        r = redis.Redis.from_url(redis_url)
+        channel = f"user_notifications:{user_id}"
+        r.publish(channel, json.dumps(notification))
+        return True
+    except Exception as e:
+        print(f"Failed to publish notification to Redis: {e}")
         return False

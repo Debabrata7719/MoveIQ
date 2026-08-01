@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/coach", tags=["coach"])
 
 import secrets
 import string
-from api.utils.email_utils import send_athlete_welcome_email
+from src.worker.notification_tasks import send_athlete_welcome_email_task
 
 class AthleteOnboardSchema(BaseModel):
     full_name: str
@@ -74,6 +74,22 @@ def request_coach_assignment(payload: RequestCoachSchema, current_user: Dict[str
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Connection request already exists or failed to send."
         )
+
+    # Send Notification to Coach
+    try:
+        from database.mongo_utils import insert_notification
+        import uuid
+        athlete_name = current_user.get("full_name", "An athlete")
+        insert_notification(
+            recipient_id=payload.coach_id,
+            notif_type="COACH_REQUEST_RECEIVED",
+            idempotency_key=f"coach_req_{athlete_id}_{payload.coach_id}_{uuid.uuid4().hex[:8]}",
+            title="New Connection Request",
+            message=f"{athlete_name} has requested to connect with you.",
+            action_link="/coach-dashboard/network"
+        )
+    except Exception as e:
+        pass # Non-blocking
 
     return {"message": "Request sent successfully"}
 
@@ -233,9 +249,34 @@ def respond_request(payload: RespondRequestSchema, current_user: Dict[str, Any] 
     if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
         raise HTTPException(status_code=403, detail="Access denied")
         
+    coach_id = current_user["user_id"]
+    coach_name = current_user.get("full_name", "A coach")
+    
+    # Pre-fetch request details to get the athlete_id for notification
+    requests_list = get_coach_requests(coach_id)
+    req_details = next((r for r in requests_list if r["id"] == payload.request_id), None)
+    
     success = respond_coach_request(payload.request_id, payload.status)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to respond to request")
+        
+    # Send Notification to Athlete
+    if req_details:
+        try:
+            from database.mongo_utils import insert_notification
+            import uuid
+            action = "accepted" if payload.status.lower() == "accepted" else "rejected"
+            insert_notification(
+                recipient_id=req_details["athlete_id"],
+                notif_type=f"COACH_REQUEST_{action.upper()}",
+                idempotency_key=f"coach_resp_{req_details['id']}_{uuid.uuid4().hex[:8]}",
+                title=f"Connection {action.title()}",
+                message=f"{coach_name} has {action} your connection request.",
+                action_link="/dashboard"
+            )
+        except Exception as e:
+            pass # Non-blocking
+
     return {"message": f"Request status updated to {payload.status}."}
 
 @router.get("/notifications")
@@ -284,8 +325,9 @@ def register_athlete(payload: AthleteOnboardSchema, current_user: Dict[str, Any]
         if not athlete_id:
             raise HTTPException(status_code=500, detail="Failed to create athlete account")
             
-        # Send credentials via email
-        email_sent = send_athlete_welcome_email(payload.email, payload.full_name, generated_pwd)
+        # Send credentials via email asynchronously
+        send_athlete_welcome_email_task.apply_async(args=[payload.email, payload.full_name, generated_pwd], queue='default')
+        email_sent = True
     else:
         # 2. Local-only anonymous profile
         virtual_uuid = secrets.token_hex(6)

@@ -16,6 +16,42 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         if os.path.exists(file_path):
             os.remove(file_path)
             
+        # Send Notifications
+        try:
+            from database.mongo_utils import insert_notification
+            from api.auth import get_athlete_coach, get_user_by_id
+            
+            # Notify Athlete
+            insert_notification(
+                recipient_id=int(athlete_id),
+                notif_type="ANALYSIS_COMPLETED",
+                idempotency_key=f"analysis_complete_{session_id}_athlete_{athlete_id}",
+                title="Analysis Complete",
+                message=f"Your video '{video_name}' has been successfully analyzed.",
+                action_link=f"/dashboard/sessions/{session_id}"
+            )
+            
+            # Notify Coach (if athlete has one)
+            coach_data = get_athlete_coach(int(athlete_id))
+            if coach_data and "coach_email" in coach_data:
+                from api.auth import get_user_by_email
+                coach_user = get_user_by_email(coach_data["coach_email"])
+                if coach_user:
+                    coach_id = coach_user["id"]
+                    athlete_info = get_user_by_id(int(athlete_id))
+                    athlete_name = athlete_info.get("full_name", "An athlete") if athlete_info else "An athlete"
+                    
+                    insert_notification(
+                        recipient_id=int(coach_id),
+                        notif_type="ATHLETE_UPLOADED",
+                        idempotency_key=f"analysis_complete_{session_id}_coach_{coach_id}",
+                        title="New Athlete Assessment",
+                        message=f"{athlete_name} has just completed a new video analysis.",
+                        action_link=f"/coach-dashboard/athletes/{athlete_id}/sessions/{session_id}"
+                    )
+        except Exception as notif_e:
+            logger.error(f"Failed to send analysis notifications: {notif_e}")
+            
         return {"status": "success", "session_id": session_id}
         
     except Exception as e:
@@ -33,5 +69,4 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         except:
             pass
             
-        self.update_state(state='FAILURE', meta={'error': str(e)})
         raise e

@@ -11,6 +11,8 @@ from api.routers.recommendations_router import router as recommendations_router
 from api.routers.coach_router import router as coach_router
 from api.routers.cloudinary_router import router as cloudinary_router
 from api.routers.ops_router import router as ops_router
+from api.routers.ws_router import router as ws_router
+from api.routers.notifications_router import router as notifications_router
 
 app = FastAPI(
     title="Sports Injury Risk Detection API",
@@ -39,6 +41,8 @@ app.include_router(coach_router)
 app.include_router(cloudinary_router)
 app.include_router(ops_router, include_in_schema=False)
 app.include_router(google_auth_router)
+app.include_router(ws_router)
+app.include_router(notifications_router)
 
 from fastapi.responses import RedirectResponse
 

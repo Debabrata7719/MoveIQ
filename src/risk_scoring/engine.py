@@ -137,6 +137,27 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
     # Save to MongoDB
     if MONGO_AVAILABLE:
         mongo_utils.save_risk_score(session_id, athlete_id, result)
+        
+        # Phase 1: High/Critical Risk Alert (System -> Coach)
+        if "High" in risk_category or "Critical" in risk_category:
+            from api.auth import get_athlete_coach, get_user_by_id
+            coach_data = get_athlete_coach(int(athlete_id))
+            if coach_data and "coach_email" in coach_data:
+                from api.auth import get_user_by_email
+                coach_user = get_user_by_email(coach_data["coach_email"])
+                if coach_user:
+                    coach_id = coach_user["id"]
+                    athlete_info = get_user_by_id(int(athlete_id))
+                    athlete_name = athlete_info.get("full_name", "An athlete") if athlete_info else "An athlete"
+                    
+                    mongo_utils.insert_notification(
+                        recipient_id=int(coach_id),
+                        notif_type="RISK_ALERT",
+                        idempotency_key=f"risk_alert_{session_id}_{coach_id}",
+                        title=f"{risk_category} Detected",
+                        message=f"{athlete_name} has been flagged as {risk_category}. Please review their assessment immediately.",
+                        action_link=f"/coach-dashboard/athletes/{athlete_id}/sessions/{session_id}"
+                    )
 
     if not quiet:
         # --- Print a readable summary ---

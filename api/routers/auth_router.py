@@ -11,7 +11,13 @@ import os
 import urllib.parse
 import json
 import httpx
-from api.utils.email_utils import send_signup_otp, send_forgot_password_otp, send_password_changed_success, send_welcome_email
+from api.config import settings
+from src.worker.notification_tasks import (
+    send_otp_signup_task,
+    send_otp_forgot_password_task,
+    send_password_changed_success_task,
+    send_welcome_email_task
+)
 from api.utils.redis_utils import store_otp, verify_otp
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -45,8 +51,8 @@ def send_signup_otp_route(req: EmailRequest):
         
     otp = str(random.randint(1000, 9999))
     if store_otp(req.email, otp, prefix="signup_otp"):
-        if send_signup_otp(req.email, otp):
-            return {"message": "OTP sent successfully"}
+        send_otp_signup_task.apply_async(args=[req.email, otp], queue='high_priority')
+        return {"message": "OTP sent successfully"}
     
     raise HTTPException(status_code=500, detail="Failed to send OTP")
 
@@ -77,8 +83,8 @@ def register_user(user: UserRegister):
         # Fallback to athlete if specified role is invalid
         assign_role(user_id, "athlete")
         
-    # Send welcome email
-    send_welcome_email(user.email, user.full_name)
+    # Send welcome email asynchronously
+    send_welcome_email_task.apply_async(args=[user.email, user.full_name], queue='default')
         
     return {"message": "User created successfully", "user_id": user_id}
 
@@ -130,8 +136,8 @@ def forgot_password_route(req: EmailRequest):
         
     otp = str(random.randint(1000, 9999))
     if store_otp(req.email, otp, prefix="reset_otp"):
-        if send_forgot_password_otp(req.email, otp):
-            return {"message": "OTP sent successfully"}
+        send_otp_forgot_password_task.apply_async(args=[req.email, otp], queue='high_priority')
+        return {"message": "OTP sent successfully"}
             
     raise HTTPException(status_code=500, detail="Failed to send OTP")
 
@@ -155,8 +161,8 @@ def reset_password_route(req: ResetPasswordRequest):
     if not update_user_password(db_user["id"], hashed_pwd):
         raise HTTPException(status_code=500, detail="Failed to update password")
         
-    # Send success email
-    send_password_changed_success(req.email)
+    # Send success email asynchronously
+    send_password_changed_success_task.apply_async(args=[req.email], queue='high_priority')
     
     return {"message": "Password updated successfully"}
 
@@ -224,8 +230,8 @@ def update_password(passwords: PasswordUpdate, current_user: Dict[str, Any] = De
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update password")
         
-    # Send success email
-    send_password_changed_success(db_user["email"])
+    # Send success email asynchronously
+    send_password_changed_success_task.apply_async(args=[db_user["email"]], queue='high_priority')
         
     return {"message": "Password updated successfully"}
 
@@ -255,7 +261,7 @@ def google_login(role: str = "athlete"):
 @google_auth_router.get("/auth/google/callback")
 async def google_callback(code: str = None, state: str = None, error: str = None):
     if error or not code:
-        return RedirectResponse(url="http://localhost:3000?error=google_auth_failed")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=google_auth_failed")
     
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
@@ -272,7 +278,7 @@ async def google_callback(code: str = None, state: str = None, error: str = None
         })
         if token_res.status_code != 200:
             print(f"Google token exchange failed: {token_res.text}")
-            return RedirectResponse(url="http://localhost:3000?error=token_exchange_failed")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=token_exchange_failed")
         
         token_data = token_res.json()
         access_token = token_data.get("access_token")
@@ -282,7 +288,7 @@ async def google_callback(code: str = None, state: str = None, error: str = None
         })
         if user_info_res.status_code != 200:
             print(f"Google userinfo failed: {user_info_res.text}")
-            return RedirectResponse(url="http://localhost:3000?error=user_info_failed")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=user_info_failed")
             
         user_info = user_info_res.json()
         
@@ -291,7 +297,7 @@ async def google_callback(code: str = None, state: str = None, error: str = None
     picture = user_info.get("picture", "")
     
     if not email:
-        return RedirectResponse(url="http://localhost:3000?error=no_email_provided")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=no_email_provided")
         
     role = "athlete"
     if state and state.startswith("role:"):
@@ -310,7 +316,7 @@ async def google_callback(code: str = None, state: str = None, error: str = None
         dummy_hash = "$2b$12$OAUTH_GOOGLE_ACCOUNT_DO_NOT_USE_PASSWORD_LOGIN_XXXXXXXXX"
         user_id = create_user(email, dummy_hash, full_name)
         if not user_id:
-            return RedirectResponse(url="http://localhost:3000?error=user_creation_failed")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=user_creation_failed")
         assign_role(user_id, role)
         roles = [role]
         
@@ -332,5 +338,5 @@ async def google_callback(code: str = None, state: str = None, error: str = None
     jwt_token = create_access_token(data={"sub": str(user_id), "email": email, "roles": roles})
     
     user_json = urllib.parse.quote(json.dumps(user_payload))
-    redirect_url = f"http://localhost:3000?token={jwt_token}&user={user_json}"
+    redirect_url = f"{settings.FRONTEND_URL}?token={jwt_token}&user={user_json}"
     return RedirectResponse(url=redirect_url)

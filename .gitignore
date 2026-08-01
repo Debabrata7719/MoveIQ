@@ -131,6 +131,8 @@ __pypackages__/
 
 # Celery stuff
 celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
 celerybeat.pid
 
 # Redis
@@ -254,3 +256,6 @@ frontend/.next/
 frontend/out/
 frontend/build/
 frontend/.env.local
+
+# Debug logs
+*_debug.txt
