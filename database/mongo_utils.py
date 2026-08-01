@@ -29,29 +29,46 @@ except ImportError:
 
 USE_LOCAL_DB = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
 
+# Global connection objects for connection pooling
+_mongo_client = None
+_db_instance = None
+
 def get_db_connection():
     """Establishes and returns a connection to the MongoDB database.
-    Tries localhost first if USE_LOCAL_DB=true, otherwise uses Atlas."""
+    Tries localhost first if USE_LOCAL_DB=true, otherwise uses Atlas.
+    Reuses a global MongoClient instance for connection pooling."""
+    global _mongo_client, _db_instance
     
+    if _db_instance is not None:
+        return _db_instance
+        
     if USE_LOCAL_DB:
         local_uri = "mongodb://localhost:27017/"
         local_db_name = "sports_injury_db"
         
         try:
             # Try local first with a short timeout
-            client = MongoClient(local_uri, serverSelectionTimeoutMS=2000)
-            client.admin.command('ping')
+            _mongo_client = MongoClient(local_uri, serverSelectionTimeoutMS=2000, maxPoolSize=50)
+            _mongo_client.admin.command('ping')
             logger.info(f"Successfully connected to Local MongoDB -> {local_db_name}")
-            return client[local_db_name]
+            _db_instance = _mongo_client[local_db_name]
+            return _db_instance
         except Exception:
             logger.warning(f"Local MongoDB not found at {local_uri}. Falling back to MongoDB Atlas...")
     
     try:
-        # Connect to Atlas
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-        client.admin.command('ping')
+        # Connect to Atlas with connection pooling parameters
+        _mongo_client = MongoClient(
+            MONGO_URI, 
+            serverSelectionTimeoutMS=5000,
+            maxPoolSize=50,
+            minPoolSize=5,
+            maxIdleTimeMS=60000
+        )
+        _mongo_client.admin.command('ping')
         logger.info(f"Successfully connected to MongoDB Atlas -> {MONGO_DB_NAME}")
-        return client[MONGO_DB_NAME]
+        _db_instance = _mongo_client[MONGO_DB_NAME]
+        return _db_instance
     except Exception as e:
         logger.error(f"Could not connect to MongoDB Atlas at {MONGO_URI}. Reason: {e}")
         sys.exit(1)
