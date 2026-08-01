@@ -22,7 +22,7 @@ from api.auth import (
     delete_team_by_id,
     update_user_profile_picture
 )
-from api.auth.mysql_auth import get_user_by_email # Fallback lookup if needed
+from api.auth import get_user_by_email # Fallback lookup if needed
 from passlib.hash import bcrypt
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])

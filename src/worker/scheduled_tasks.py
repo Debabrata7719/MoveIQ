@@ -1,7 +1,7 @@
 from celery.utils.log import get_task_logger
 from src.worker.celery_app import celery_app
 from database.mongo_utils import get_db_connection, insert_notification
-from api.auth.mysql_auth import get_connection
+from api.auth import get_connection
 from datetime import datetime, timedelta, timezone
 import uuid
 
