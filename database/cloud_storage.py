@@ -86,3 +86,21 @@ def delete_all_raw_videos() -> int:
     except Exception as e:
         logger.error(f"Failed to delete raw videos from Cloudinary: {e}")
         return 0
+
+def delete_all_key_moments() -> int:
+    """Deletes all images in the sports_injury_key_moments folder."""
+    if not os.getenv("CLOUDINARY_URL"):
+        return 0
+        
+    try:
+        # We can delete by prefix (folder name)
+        result = cloudinary.api.delete_resources_by_prefix(
+            "sports_injury_key_moments/", 
+            resource_type="image"
+        )
+        deleted_count = len(result.get('deleted', {}))
+        logger.info(f"Deleted {deleted_count} key moment images from Cloudinary.")
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Failed to delete key moments from Cloudinary: {e}")
+        return 0

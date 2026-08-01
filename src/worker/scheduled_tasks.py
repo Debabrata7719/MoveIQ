@@ -148,10 +148,11 @@ def cleanup_cloudinary_videos_task():
     """
     logger.info("Starting nightly Cloudinary video cleanup...")
     try:
-        from database.cloud_storage import delete_all_raw_videos
-        deleted_count = delete_all_raw_videos()
-        logger.info(f"Nightly cleanup complete: {deleted_count} videos deleted.")
-        return f"Deleted {deleted_count} videos"
+        from database.cloud_storage import delete_all_raw_videos, delete_all_key_moments
+        deleted_videos_count = delete_all_raw_videos()
+        deleted_images_count = delete_all_key_moments()
+        logger.info(f"Nightly cleanup complete: {deleted_videos_count} videos, {deleted_images_count} key moments deleted.")
+        return f"Deleted {deleted_videos_count} videos, {deleted_images_count} key moments"
     except Exception as e:
         logger.error(f"Error in Cloudinary cleanup task: {e}")
         raise
