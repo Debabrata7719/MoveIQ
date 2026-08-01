@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-import { NgrokBypass } from "@/components/NgrokBypass";
+
 
 export const metadata: Metadata = {
   title: "MoveiQ",
@@ -50,7 +50,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <NgrokBypass />
+
         {children}
       </body>
     </html>
