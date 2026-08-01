@@ -23,7 +23,8 @@ def get_redis_url() -> str:
     """Returns the true connection URI for Celery or WebSockets."""
     if USE_LOCAL_DB:
         return f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
-    return CLOUD_REDIS_URL
+    # redis-py strictly wants 'none', but Celery wants 'CERT_NONE'
+    return CLOUD_REDIS_URL.replace("CERT_NONE", "none")
 
 if USE_LOCAL_DB:
     # Local Connection Pool

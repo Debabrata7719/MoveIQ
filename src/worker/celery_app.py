@@ -8,10 +8,13 @@ load_dotenv()
 
 redis_url = get_redis_url()
 
+# Celery (Kombu) explicitly requires CERT_NONE instead of none
+celery_redis_url = redis_url.replace("none", "CERT_NONE")
+
 celery_app = Celery(
     "moveiq_worker",
-    broker=redis_url,
-    backend=redis_url,
+    broker=celery_redis_url,
+    backend=celery_redis_url,
     include=["src.worker.tasks", "src.worker.notification_tasks", "src.worker.scheduled_tasks"]
 )
 
