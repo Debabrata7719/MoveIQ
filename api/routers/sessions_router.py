@@ -61,18 +61,30 @@ def upload_and_analyze(
     safe_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
-    # Save video temporarily
+    from database import mongo_utils
+    session_id = mongo_utils.generate_session_id()
+
+    # Save video temporarily on Render disk
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(video.file, buffer)
+            
+        # Upload to Cloudinary for distributed processing
+        from database.cloud_storage import upload_video
+        secure_url = upload_video(file_path, public_id=f"raw_{session_id}")
+        
+        # If upload succeeded, cleanup the local Render disk and pass the URL instead
+        if secure_url and os.path.exists(file_path):
+            os.remove(file_path)
+            file_path = secure_url
+            
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save video: {str(e)}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Failed to process video upload: {str(e)}")
 
     # Enqueue Celery Task
     try:
-        from database import mongo_utils
-        session_id = mongo_utils.generate_session_id()
-        
         from src.worker.tasks import process_video_task
         task = process_video_task.delay(
             file_path=file_path, 
@@ -86,7 +98,8 @@ def upload_and_analyze(
             "task_id": task.id
         }
     except Exception as e:
-        if os.path.exists(file_path):
+        # Don't try to delete URL strings
+        if not file_path.startswith("http") and os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
 

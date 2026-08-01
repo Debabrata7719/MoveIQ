@@ -53,4 +53,8 @@ celery_app.conf.beat_schedule = {
         'task': 'src.worker.scheduled_tasks.reassessment_reminder_task',
         'schedule': crontab(hour=10, minute=0), # Every day at 10 AM
     },
+    'nightly-cloudinary-cleanup-midnight': {
+        'task': 'src.worker.scheduled_tasks.cleanup_cloudinary_videos_task',
+        'schedule': crontab(hour=0, minute=0), # Every night at midnight
+    },
 }

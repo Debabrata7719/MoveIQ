@@ -8,6 +8,26 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
     Celery task that runs the heavy AI pipeline in the background.
     """
     try:
+        # If the file path is a Cloudinary URL, download it locally first
+        if file_path.startswith("http://") or file_path.startswith("https://"):
+            import requests
+            from src.config import RAW_VIDEOS_DIR
+            import logging
+            logger = logging.getLogger("celery_worker")
+            
+            os.makedirs(RAW_VIDEOS_DIR, exist_ok=True)
+            local_path = os.path.join(RAW_VIDEOS_DIR, f"downloaded_{session_id}.mp4")
+            
+            logger.info(f"Downloading video from Cloudinary for session {session_id}...")
+            response = requests.get(file_path, stream=True)
+            response.raise_for_status()
+            with open(local_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            # Point file_path to the local download for the pipeline
+            file_path = local_path
+
         # Run the existing synchronous pipeline
         # The pipeline itself will publish progress to Redis for WebSockets
         result = run_pipeline(athlete_id=athlete_id, video_name=video_name, source_path=file_path, explicit_session_id=session_id)

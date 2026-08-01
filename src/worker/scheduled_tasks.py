@@ -136,3 +136,22 @@ def weekly_progress_report_task():
     except Exception as e:
         logger.error(f"Error in weekly progress report task: {e}")
         raise
+
+@celery_app.task(
+    name="src.worker.scheduled_tasks.cleanup_cloudinary_videos_task",
+    queue="low_priority"
+)
+def cleanup_cloudinary_videos_task():
+    """
+    Deletes all videos in the Cloudinary raw videos folder to save storage space.
+    Intended to be run automatically every midnight.
+    """
+    logger.info("Starting nightly Cloudinary video cleanup...")
+    try:
+        from database.cloud_storage import delete_all_raw_videos
+        deleted_count = delete_all_raw_videos()
+        logger.info(f"Nightly cleanup complete: {deleted_count} videos deleted.")
+        return f"Deleted {deleted_count} videos"
+    except Exception as e:
+        logger.error(f"Error in Cloudinary cleanup task: {e}")
+        raise
