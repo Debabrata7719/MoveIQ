@@ -7,6 +7,7 @@ USE_LOCAL_DB = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
 if USE_LOCAL_DB:
     from .mysql_auth import (
         get_connection,
+        release_connection,
         create_user,
         get_user_by_email,
         assign_role,
@@ -38,6 +39,7 @@ if USE_LOCAL_DB:
 else:
     from .postgres_auth import (
         get_connection,
+        release_connection,
         create_user,
         get_user_by_email,
         assign_role,

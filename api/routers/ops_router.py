@@ -95,17 +95,14 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
 
     # PostgreSQL / MySQL
     try:
-        from api.auth import get_connection, get_user_by_id
+        from api.auth import get_connection, release_connection
         import time
         t0 = time.time()
         conn = get_connection()
         latency_ms = round((time.time() - t0) * 1000, 2)
         if conn:
             results["sql_db"] = {"status": "ok", "latency_ms": latency_ms}
-            if hasattr(conn, "close"):
-                conn.close()
-            elif hasattr(conn, "putconn"):
-                pass  # pooled
+            release_connection(conn)
         else:
             results["sql_db"] = {"status": "error", "message": "No connection returned"}
     except Exception as e:

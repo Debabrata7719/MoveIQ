@@ -806,9 +806,10 @@ def get_session_audit_log(page: int = 1, size: int = 20, status_filter: str = ""
                 except Exception:
                     pass
             sessions.append(entry)
-        if conn:
-            release_connection(conn)
         return {"total": total, "sessions": sessions}
     except Exception as err:
         print(f"Error get_session_audit_log: {err}")
         return {"total": 0, "sessions": []}
+    finally:
+        if 'conn' in locals() and conn:
+            release_connection(conn)

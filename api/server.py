@@ -62,12 +62,11 @@ def health_check():
     
     # Check SQL
     try:
+        from api.auth import get_connection, release_connection
         conn = get_connection()
         if conn:
             status["sql"] = "connected"
-            # postgres uses close() and mysql uses close() but checking helps
-            if hasattr(conn, "close"):
-                conn.close()
+            release_connection(conn)
     except Exception as e:
         status["sql_error"] = str(e)
         
