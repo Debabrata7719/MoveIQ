@@ -97,6 +97,16 @@ def assign_role(user_id: int, role_name: str) -> bool:
         # INSERT IGNORE silently skips if the role is already assigned
         cursor.execute("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
         conn.commit()
+        
+        # Trigger ES syncs
+        try:
+            from src.worker.search_tasks import sync_user_global_to_es, sync_coach_to_es
+            sync_user_global_to_es.apply_async(args=[user_id], queue='default')
+            if role_name == 'coach':
+                sync_coach_to_es.apply_async(args=[user_id], queue='default')
+        except Exception as e:
+            print(f"ES Sync failed for role assignment: {e}")
+            
         return True
     except mysql.connector.Error as err:
         print(f"Error: {err}")
@@ -179,6 +189,15 @@ def update_user_account(user_id: int, full_name: str, email: str) -> bool:
         query = "UPDATE users SET full_name = %s, email = %s, updated_at = NOW() WHERE id = %s"
         cursor.execute(query, (full_name, email, user_id))
         conn.commit()
+        
+        # Trigger ES syncs
+        try:
+            from src.worker.search_tasks import sync_user_global_to_es, sync_coach_to_es
+            sync_user_global_to_es.apply_async(args=[user_id], queue='default')
+            sync_coach_to_es.apply_async(args=[user_id], queue='default')
+        except Exception as e:
+            print(f"ES Sync failed for account update: {e}")
+            
         return True
     except mysql.connector.Error as err:
         print(f"Error: {err}")
@@ -225,6 +244,29 @@ def update_user_password(user_id: int, new_password_hash: str) -> bool:
 
 def search_coaches_by_name(query_str: str) -> List[Dict[str, Any]]:
     """Search for users with the role 'coach' whose name, email, or coach_code matches query_str."""
+    try:
+        from database.elastic_utils import get_es_client
+        es = get_es_client()
+        if es:
+            query_body = {
+                "query": {
+                    "multi_match": {
+                        "query": query_str,
+                        "fields": ["full_name^3", "email", "coach_code"],
+                        "fuzziness": "AUTO"
+                    }
+                }
+            }
+            res = es.search(index="coaches", body=query_body, size=20)
+            results = []
+            for hit in res["hits"]["hits"]:
+                source = hit["_source"]
+                results.append(source)
+            if results:
+                return results
+    except Exception as e:
+        print(f"Elasticsearch search_coaches_by_name failed, falling back to SQL: {e}")
+
     conn = get_connection()
     if not conn:
         return []
@@ -562,6 +604,54 @@ def delete_team_by_id(coach_id: int, team_id: int) -> bool:
 
 def get_all_users_paginated(page: int = 1, size: int = 20, search: str = "") -> Dict[str, Any]:
     """Paginated list of all non-admin users with their roles (operational metadata only)."""
+    try:
+        from database.elastic_utils import get_es_client
+        es = get_es_client()
+        if es:
+            query_body = {
+                "query": {
+                    "bool": {
+                        "must_not": [
+                            {"match": {"roles": "admin"}}
+                        ]
+                    }
+                },
+                "from": (page - 1) * size,
+                "size": size,
+                "sort": [{"created_at": {"order": "desc"}}]
+            }
+            if search:
+                query_body["query"]["bool"]["should"] = [
+                    {
+                        "multi_match": {
+                            "query": search,
+                            "fields": ["full_name^3", "email"],
+                            "fuzziness": "AUTO"
+                        }
+                    }
+                ]
+                query_body["query"]["bool"]["minimum_should_match"] = 1
+                
+            res = es.search(index="users_global", body=query_body)
+            users = []
+            for hit in res["hits"]["hits"]:
+                source = hit["_source"]
+                users.append({
+                    "id": source.get("id"),
+                    "email": source.get("email"),
+                    "full_name": source.get("full_name"),
+                    "is_active": source.get("is_active"),
+                    "roles": source.get("roles", []),
+                    "created_at": source.get("created_at")
+                })
+            
+            return {
+                "total": res["hits"]["total"]["value"],
+                "users": users
+            }
+    except Exception as e:
+        print(f"Elasticsearch get_all_users_paginated failed: {e}")
+
     conn = get_connection()
     if not conn:
         return {"total": 0, "users": []}

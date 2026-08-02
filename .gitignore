@@ -222,7 +222,7 @@ __marimo__/
 .streamlit/secrets.toml
 #Uploaded video (Later change to object storage)
 uploads/
-
+supabase_schema.sql
 # Project Specific
 scalling&Bugs/
 Claude_Bugs.md

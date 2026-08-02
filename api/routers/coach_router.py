@@ -30,6 +30,7 @@ router = APIRouter(prefix="/api/coach", tags=["coach"])
 import secrets
 import string
 from src.worker.notification_tasks import send_athlete_welcome_email_task
+from src.worker.search_tasks import sync_athlete_to_es
 
 class AthleteOnboardSchema(BaseModel):
     full_name: str
@@ -243,6 +244,61 @@ def get_roster_athletes(current_user: Dict[str, Any] = Depends(get_current_user)
         
     return roster
 
+@router.get("/athletes/search")
+def search_coach_athletes(q: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Search assigned athletes using Elasticsearch fuzzy matching."""
+    if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    coach_id = current_user["user_id"]
+    
+    from database.elastic_utils import get_es_client
+    es = get_es_client()
+    
+    if not es:
+        # Fallback to empty if ES is down
+        return []
+        
+    try:
+        query_body = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match": {"coach_id": coach_id}}
+                    ],
+                    "should": [
+                        {
+                            "multi_match": {
+                                "query": q,
+                                "fields": ["full_name^3", "email", "sport", "has_previous_injury", "previous_injury_type", "risk_category"],
+                                "fuzziness": "AUTO"
+                            }
+                        }
+                    ],
+                    "minimum_should_match": 1
+                }
+            }
+        }
+        
+        res = es.search(index="athletes", body=query_body, size=20)
+        
+        results = []
+        for hit in res["hits"]["hits"]:
+            source = hit["_source"]
+            results.append({
+                "id": int(source.get("athlete_id", 0)),
+                "full_name": source.get("full_name"),
+                "email": source.get("email"),
+                "sport": source.get("sport"),
+                "risk_category": source.get("risk_category"),
+                "profile_picture_url": source.get("profile_picture_url")
+            })
+            
+        return results
+    except Exception as e:
+        print(f"Elasticsearch search failed: {e}")
+        return []
+
 @router.post("/respond-request")
 def respond_request(payload: RespondRequestSchema, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Approve or Reject pending connection requests."""
@@ -365,6 +421,12 @@ def register_athlete(payload: AthleteOnboardSchema, current_user: Dict[str, Any]
         upsert=True
     )
     
+    # 4. Sync to Elasticsearch for search
+    try:
+        sync_athlete_to_es.apply_async(args=[athlete_id, coach_id], queue='default')
+    except Exception as e:
+        print(f"Failed to trigger ES sync for new athlete {athlete_id}: {e}")
+    
     msg = "Athlete registered successfully."
     if payload.email and payload.email.strip():
         msg += " Login credentials emailed to athlete." if email_sent else " Failed to send credential notification email."
@@ -464,6 +526,13 @@ def update_athlete_profile_by_coach(athlete_id: int, payload: Dict[str, Any], cu
         }},
         upsert=True
     )
+    
+    # Sync changes to Elasticsearch
+    try:
+        sync_athlete_to_es.apply_async(args=[athlete_id, coach_id], queue='default')
+    except Exception as e:
+        print(f"Failed to trigger ES sync for updated athlete {athlete_id}: {e}")
+        
     return {"message": "Profile updated successfully"}
 
 @router.post("/teams")

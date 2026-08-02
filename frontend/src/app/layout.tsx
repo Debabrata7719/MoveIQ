@@ -15,8 +15,21 @@ const geistMono = Geist_Mono({
 
 
 export const metadata: Metadata = {
-  title: "MoveiQ",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://move-iq-theta.vercel.app'),
+  title: "MoveIQ",
   description: "AI-powered sports injury risk detection and biomechanics analysis.",
+  openGraph: {
+    title: "MoveIQ | AI Biomechanics",
+    description: "AI-powered sports injury risk detection and biomechanics analysis.",
+    url: "https://move-iq-theta.vercel.app",
+    siteName: "MoveIQ",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "MoveIQ | AI Biomechanics",
+    description: "AI-powered sports injury risk detection and biomechanics analysis.",
+  },
 };
 
 export default function RootLayout({

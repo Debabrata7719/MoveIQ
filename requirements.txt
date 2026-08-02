@@ -29,3 +29,4 @@ pydantic[email]
 websockets
 psutil
 requests
+elasticsearch

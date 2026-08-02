@@ -15,7 +15,7 @@ celery_app = Celery(
     "moveiq_worker",
     broker=celery_redis_url,
     backend=celery_redis_url,
-    include=["src.worker.tasks", "src.worker.notification_tasks", "src.worker.scheduled_tasks"]
+    include=["src.worker.tasks", "src.worker.notification_tasks", "src.worker.scheduled_tasks", "src.worker.search_tasks"]
 )
 
 celery_app.conf.update(
@@ -31,7 +31,8 @@ celery_app.conf.update(
 celery_app.autodiscover_tasks([
     'src.worker.tasks', 
     'src.worker.notification_tasks',
-    'src.worker.scheduled_tasks'
+    'src.worker.scheduled_tasks',
+    'src.worker.search_tasks'
 ])
 
 # Configure task routing to specific queues
@@ -41,6 +42,7 @@ celery_app.conf.task_routes = {
     'src.worker.notification_tasks.*': {'queue': 'default'},
     'src.worker.tasks.*': {'queue': 'video_processing'},
     'src.worker.scheduled_tasks.*': {'queue': 'low_priority'},
+    'src.worker.search_tasks.*': {'queue': 'default'},
 }
 
 # Configure Celery Beat schedule
