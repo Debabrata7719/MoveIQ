@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from typing import Dict, Any
-from api.auth import create_user, get_user_by_email, get_user_roles, assign_role, update_user_profile_picture
+from database.sql_utils import create_user, get_user_by_email, get_user_roles, assign_role, update_user_profile_picture
 from api.auth.password_utils import hash_password, verify_password, validate_password
 from api.auth.jwt_handler import create_access_token
 from api.dependencies import get_current_user
@@ -111,7 +111,7 @@ def login_user(user: UserLogin):
     
     token = create_access_token(token_data)
     
-    from api.auth import get_user_by_id
+    from database.sql_utils import get_user_by_id
     full_user = get_user_by_id(db_user["id"]) or db_user
     
     return {
@@ -156,7 +156,7 @@ def reset_password_route(req: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail=msg)
         
     # Update password
-    from api.auth import update_user_password
+    from database.sql_utils import update_user_password
     hashed_pwd = hash_password(req.new_password)
     if not update_user_password(db_user["id"], hashed_pwd):
         raise HTTPException(status_code=500, detail="Failed to update password")
@@ -168,7 +168,7 @@ def reset_password_route(req: ResetPasswordRequest):
 
 @router.get("/me")
 def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    from api.auth import get_user_by_id
+    from database.sql_utils import get_user_by_id
     db_user = get_user_by_id(int(current_user["user_id"]))
     full_name = db_user["full_name"] if db_user else None
     profile_picture_url = db_user.get("profile_picture_url") if db_user else None
@@ -188,7 +188,7 @@ class AccountUpdate(BaseModel):
 
 @router.put("/account")
 def update_account(account: AccountUpdate, current_user: Dict[str, Any] = Depends(get_current_user)):
-    from api.auth import update_user_account, get_user_by_email
+    from database.sql_utils import update_user_account, get_user_by_email
     
     # Check if they are changing email and if the new email is already taken
     if account.email != current_user["email"]:
@@ -208,7 +208,7 @@ class PasswordUpdate(BaseModel):
 
 @router.put("/password")
 def update_password(passwords: PasswordUpdate, current_user: Dict[str, Any] = Depends(get_current_user)):
-    from api.auth import get_user_by_id, update_user_password
+    from database.sql_utils import get_user_by_id, update_user_password
     from api.auth.password_utils import hash_password, verify_password
     
     db_user = get_user_by_id(current_user["user_id"])
@@ -323,7 +323,7 @@ async def google_callback(code: str = None, state: str = None, error: str = None
     if picture:
         update_user_profile_picture(user_id, picture)
         
-    from api.auth import get_user_by_id
+    from database.sql_utils import get_user_by_id
     full_user = get_user_by_id(user_id) or {}
         
     user_payload = {

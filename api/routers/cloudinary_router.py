@@ -2,7 +2,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Dict, Any
 from api.dependencies import get_current_user
-from api.auth import get_user_by_id, update_user_profile_picture
+from database.sql_utils import get_user_by_id, update_user_profile_picture
 import cloudinary
 import cloudinary.uploader
 

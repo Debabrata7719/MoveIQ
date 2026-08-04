@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.mongo_utils import get_db_connection
-from api.auth import get_connection, USE_LOCAL_DB
+from database.sql_utils import get_connection, USE_LOCAL_DB
 
 # Import routers
 from api.routers.auth_router import router as auth_router, google_auth_router
@@ -13,6 +13,8 @@ from api.routers.cloudinary_router import router as cloudinary_router
 from api.routers.ops_router import router as ops_router
 from api.routers.ws_router import router as ws_router
 from api.routers.notifications_router import router as notifications_router
+from api.routers.webhook_router import router as webhook_router
+from api.routers.chat_router import router as chat_router
 
 app = FastAPI(
     title="Sports Injury Risk Detection API",
@@ -43,6 +45,8 @@ app.include_router(ops_router, include_in_schema=False)
 app.include_router(google_auth_router)
 app.include_router(ws_router)
 app.include_router(notifications_router)
+app.include_router(webhook_router)
+app.include_router(chat_router)
 
 from fastapi.responses import RedirectResponse
 
@@ -62,7 +66,7 @@ def health_check():
     
     # Check SQL
     try:
-        from api.auth import get_connection, release_connection
+        from database.sql_utils import get_connection, release_connection
         conn = get_connection()
         if conn:
             status["sql"] = "connected"

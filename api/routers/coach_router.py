@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from api.dependencies import get_current_user
 from database.mongo_utils import get_db_connection
-from api.auth import (
+from database.sql_utils import (
     search_coaches_by_name,
     get_assigned_athletes,
     create_athlete_by_coach,
@@ -22,7 +22,7 @@ from api.auth import (
     delete_team_by_id,
     update_user_profile_picture
 )
-from api.auth import get_user_by_email # Fallback lookup if needed
+from database.sql_utils import get_user_by_email # Fallback lookup if needed
 from passlib.hash import bcrypt
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
@@ -31,6 +31,7 @@ import secrets
 import string
 from src.worker.notification_tasks import send_athlete_welcome_email_task
 from src.worker.search_tasks import sync_athlete_to_es
+from api.utils.redis_utils import store_otp
 
 class AthleteOnboardSchema(BaseModel):
     full_name: str
@@ -367,22 +368,20 @@ def register_athlete(payload: AthleteOnboardSchema, current_user: Dict[str, Any]
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
             
-        # Generate a strong, secure random password matching standard rules
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-        while True:
-            generated_pwd = ''.join(secrets.choice(alphabet) for i in range(12))
-            if (any(c.isdigit() for c in generated_pwd) and 
-                any(c in "!@#$%^&*" for c in generated_pwd) and 
-                any(c.isupper() for c in generated_pwd)):
-                break
-                
-        password_hash = bcrypt.hash(generated_pwd)
+        # Generate a dummy password hash just to create the account securely
+        dummy_pwd = secrets.token_urlsafe(32)
+        password_hash = bcrypt.hash(dummy_pwd)
+        
         athlete_id = create_athlete_by_coach(payload.email, password_hash, payload.full_name, coach_id)
         if not athlete_id:
             raise HTTPException(status_code=500, detail="Failed to create athlete account")
             
-        # Send credentials via email asynchronously
-        send_athlete_welcome_email_task.apply_async(args=[payload.email, payload.full_name, generated_pwd], queue='default')
+        # Generate a secure, single-use password-reset token
+        reset_token = secrets.token_urlsafe(32)
+        store_otp(payload.email, reset_token, prefix="reset_otp", expiry_seconds=86400) # Valid for 24 hours
+        
+        # Send credentials via email asynchronously (passing the token, NOT a password)
+        send_athlete_welcome_email_task.apply_async(args=[payload.email, payload.full_name, reset_token], queue='default')
         email_sent = True
     else:
         # 2. Local-only anonymous profile
@@ -478,7 +477,7 @@ def get_athlete_session_history(athlete_id: int, current_user: Dict[str, Any] = 
     else:
         profile = {}
         
-    from api.auth import get_user_by_id
+    from database.sql_utils import get_user_by_id
     user_info = get_user_by_id(int(athlete_id))
     if user_info:
         profile["full_name"] = user_info.get("full_name")

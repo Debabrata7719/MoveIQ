@@ -99,21 +99,24 @@ Sports Injury Risk Detection Team
 """
     return send_email(to_email, subject, body)
 
-def send_athlete_welcome_email(to_email: str, full_name: str, password: str) -> bool:
+def send_athlete_welcome_email(to_email: str, full_name: str, reset_token: str) -> bool:
     subject = "Your MoveIQ Athlete Credentials"
+    
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    setup_link = f"{frontend_url}?reset_token={reset_token}&email={to_email}"
+    
     body = f"""Hello {full_name},
 
 Your coach has added you to their roster on MoveIQ! An athlete account has been successfully created for you.
 
 You can log in to view your biomechanical analysis reports, dashboards, and custom recommendations.
 
-Here are your temporary login details:
+To securely set up your password and access your account, please click the link below:
 -----------------------------------------
-Email:      {to_email}
-Password:   {password}
+{setup_link}
 -----------------------------------------
 
-For security, we recommend that you change your password after logging in for the first time.
+This link is valid for 24 hours.
 
 Welcome to the team!
 

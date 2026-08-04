@@ -11,7 +11,7 @@ from src.main import run_pipeline
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from api.auth import get_assigned_athletes
+from database.sql_utils import get_assigned_athletes
 import math
 
 def replace_nan_with_none(obj):

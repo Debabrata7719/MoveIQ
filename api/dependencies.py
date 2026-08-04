@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any
 from api.auth.jwt_handler import decode_access_token
-from api.auth import get_user_roles
+from database.sql_utils import get_user_roles
 
 security = HTTPBearer()
 

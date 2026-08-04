@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, EmailStr
 from api.dependencies import require_admin, get_current_user
-from api.auth import (
+from database.sql_utils import (
     get_all_users_paginated,
     update_user_roles,
     toggle_user_status,
@@ -95,7 +95,7 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
 
     # PostgreSQL / MySQL
     try:
-        from api.auth import get_connection, release_connection
+        from database.sql_utils import get_connection, release_connection
         import time
         t0 = time.time()
         conn = get_connection()
@@ -198,7 +198,7 @@ def update_ops_email(
         raise HTTPException(status_code=400, detail="Email already registered to another account")
 
     # Get current full_name from DB
-    from api.auth import get_user_by_id
+    from database.sql_utils import get_user_by_id
     db_user = get_user_by_id(int(current_user["user_id"]))
     full_name = db_user["full_name"] if db_user else "Platform Administrator"
 
