@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, Mail, Lock, User, ArrowLeft, KeyRound, CheckCircle2, ChevronRight, Eye, EyeOff } from 'lucide-react';
 
 const PasswordRequirements = ({ password }: { password: string }) => {
@@ -57,6 +57,25 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
 
   // OTP phases
   const [otpSent, setOtpSent] = useState(false);
+
+  // Check for reset_token in URL (for coach-created accounts)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const resetToken = params.get('reset_token');
+      const urlEmail = params.get('email');
+      
+      if (resetToken && urlEmail) {
+        setMode('forgot_password');
+        setEmail(urlEmail);
+        setOtp(resetToken);
+        setOtpSent(true);
+        
+        // Clean up URL so they don't accidentally reuse it on refresh
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, []);
 
   const resetForm = () => {
     setError(null);

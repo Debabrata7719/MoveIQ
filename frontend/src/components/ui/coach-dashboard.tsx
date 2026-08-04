@@ -42,9 +42,10 @@ interface CoachDashboardProps {
   userName?: string;
   profilePictureUrl?: string | null;
   coachCode?: string | null;
+  userId?: number | string;
 }
 
-export function CoachDashboard({ token, currentView, userName, profilePictureUrl, coachCode }: CoachDashboardProps) {
+export function CoachDashboard({ token, currentView, userName, profilePictureUrl, coachCode, userId }: CoachDashboardProps) {
   // Navigation / View States synced with parent sidebar routing
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
@@ -589,6 +590,7 @@ MoveIQ Injury Prevention System
         coachTitle="MoveIQ Coach"
         avatarUrl={profilePictureUrl || undefined}
         token={token}
+        userId={userId}
       />
 
       <div className="flex-1">

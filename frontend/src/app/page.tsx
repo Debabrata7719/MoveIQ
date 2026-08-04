@@ -16,6 +16,7 @@ import { ReportDetailModal } from "@/components/ui/athlete/ReportDetailModal";
 import { ExerciseDetailModal } from "@/components/ui/athlete/ExerciseDetailModal";
 import { OpsPortal } from "@/components/ui/ops/OpsPortal";
 import { NotificationBell } from "@/components/ui/NotificationBell";
+import { ChatWidget } from "@/components/ui/ChatWidget";
 import { useState, useEffect } from "react";
 import { Loader2, Award, Users, Search, Send, ArrowLeft } from "lucide-react";
 import toast from 'react-hot-toast';
@@ -541,9 +542,10 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
 
       <div className="flex-1 h-full overflow-y-auto relative">
         
-        {/* Athlete Notification Bell (Floating Top Right) */}
+        {/* Athlete Notification & Chat (Floating Top Right) */}
         {activeDashboard === 'athlete' && token && (
-          <div className="absolute top-4 right-4 z-40 bg-white/50 backdrop-blur-sm rounded-full p-1 border border-slate-200 shadow-sm">
+          <div className="absolute top-4 right-4 z-40 flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full p-1 border border-slate-200 shadow-sm">
+            <ChatWidget token={token} role={activeDashboard} userId={user?.id || user?.user_id} />
             <NotificationBell token={token} />
           </div>
         )}
@@ -556,6 +558,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
             userName={user?.full_name}
             profilePictureUrl={user?.profile_picture_url}
             coachCode={user?.coach_code}
+            userId={user?.id || user?.user_id}
           />
         )}
 
