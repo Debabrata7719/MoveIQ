@@ -6,10 +6,16 @@ from celery.schedules import crontab
 
 load_dotenv()
 
+import urllib.parse
 redis_url = get_redis_url()
 
 # Celery (Kombu) explicitly requires CERT_NONE instead of none
-celery_redis_url = redis_url.replace("none", "CERT_NONE")
+parsed = urllib.parse.urlparse(redis_url)
+query_params = urllib.parse.parse_qs(parsed.query)
+if "ssl_cert_reqs" in query_params and "none" in query_params["ssl_cert_reqs"]:
+    query_params["ssl_cert_reqs"] = ["CERT_NONE"]
+new_query = urllib.parse.urlencode(query_params, doseq=True)
+celery_redis_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
 
 celery_app = Celery(
     "moveiq_worker",

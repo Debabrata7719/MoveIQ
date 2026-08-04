@@ -1,4 +1,5 @@
 import smtplib
+import requests
 from pymongo.errors import PyMongoError
 from src.worker.celery_app import celery_app
 from api.utils.email_utils import (
@@ -70,7 +71,7 @@ def send_welcome_email_task(self, to_email: str, full_name: str):
 @celery_app.task(
     name="src.worker.notification_tasks.trigger_webhook_task",
     bind=True,
-    autoretry_for=(Exception,),
+    autoretry_for=(requests.exceptions.ConnectionError, requests.exceptions.Timeout),
     retry_backoff=True,
     max_retries=3
 )
@@ -94,9 +95,9 @@ def trigger_webhook_task(self, webhook_url: str, payload: dict):
     retry_backoff=True,
     retry_kwargs={'max_retries': 3}
 )
-def send_athlete_welcome_email_task(self, to_email: str, full_name: str, password: str):
+def send_athlete_welcome_email_task(self, to_email: str, full_name: str, reset_token: str):
     logger.info(f"Sending athlete welcome email to {to_email}")
-    success = send_athlete_welcome_email(to_email, full_name, password)
+    success = send_athlete_welcome_email(to_email, full_name, reset_token)
     if not success:
         raise ConnectionError(f"Failed to send athlete welcome email to {to_email}")
     return "Sent"

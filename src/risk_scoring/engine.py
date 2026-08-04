@@ -140,10 +140,10 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
         
         # Phase 1: High/Critical Risk Alert (System -> Coach)
         if "High" in risk_category or "Critical" in risk_category:
-            from api.auth import get_athlete_coach, get_user_by_id
+            from database.sql_utils import get_athlete_coach, get_user_by_id
             coach_data = get_athlete_coach(int(athlete_id))
             if coach_data and "coach_email" in coach_data:
-                from api.auth import get_user_by_email
+                from database.sql_utils import get_user_by_email
                 coach_user = get_user_by_email(coach_data["coach_email"])
                 if coach_user:
                     coach_id = coach_user["id"]

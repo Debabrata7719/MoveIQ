@@ -1,6 +1,9 @@
 import os
 from src.worker.celery_app import celery_app
 from src.main import run_pipeline
+from src.logger import get_logger
+
+logger = get_logger("celery_worker")
 
 @celery_app.task(bind=True)
 def process_video_task(self, file_path: str, athlete_id: str, video_name: str, session_id: str):
@@ -12,8 +15,6 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         if file_path.startswith("http://") or file_path.startswith("https://"):
             import requests
             from src.config import RAW_VIDEOS_DIR
-            import logging
-            logger = logging.getLogger("celery_worker")
             
             os.makedirs(RAW_VIDEOS_DIR, exist_ok=True)
             local_path = os.path.join(RAW_VIDEOS_DIR, f"downloaded_{session_id}.mp4")
@@ -39,7 +40,7 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         # Send Notifications
         try:
             from database.mongo_utils import insert_notification
-            from api.auth import get_athlete_coach, get_user_by_id
+            from database.sql_utils import get_athlete_coach, get_user_by_id
             
             # Notify Athlete
             insert_notification(
@@ -54,7 +55,7 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
             # Notify Coach (if athlete has one)
             coach_data = get_athlete_coach(int(athlete_id))
             if coach_data and "coach_email" in coach_data:
-                from api.auth import get_user_by_email
+                from database.sql_utils import get_user_by_email
                 coach_user = get_user_by_email(coach_data["coach_email"])
                 if coach_user:
                     coach_id = coach_user["id"]
@@ -71,6 +72,50 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
                     )
         except Exception as notif_e:
             logger.error(f"Failed to send analysis notifications: {notif_e}")
+            
+        # Dispatch Webhooks
+        try:
+            from api.utils.webhook_utils import dispatch_webhook_event
+            payload = {
+                "event": "video.processing_complete",
+                "athlete_id": athlete_id,
+                "session_id": session_id,
+                "video_name": video_name
+            }
+            # Trigger for athlete
+            dispatch_webhook_event("video.processing_complete", payload, user_id=int(athlete_id))
+            
+            # Trigger for coach
+            if 'coach_id' in locals():
+                dispatch_webhook_event("video.processing_complete", payload, user_id=int(coach_id))
+                
+            # Check for High Risk Event
+            try:
+                from database.mongo_utils import get_risk_score
+                risk_data = get_risk_score(session_id)
+                if risk_data and risk_data.get("risk_data", {}).get("risk_category") in ("High Risk", "Critical Risk"):
+                    high_risk_payload = {
+                        "event": "athlete.high_risk_detected",
+                        "athlete_id": athlete_id,
+                        "session_id": session_id,
+                        "risk_score": risk_data.get("risk_data", {}).get("final_risk_score")
+                    }
+                    dispatch_webhook_event("athlete.high_risk_detected", high_risk_payload, user_id=int(athlete_id))
+                    if 'coach_id' in locals():
+                        dispatch_webhook_event("athlete.high_risk_detected", high_risk_payload, user_id=int(coach_id))
+            except Exception as e:
+                logger.error(f"Failed to check high risk for webhook: {e}")
+                
+        except Exception as webhook_e:
+            logger.error(f"Failed to dispatch webhooks: {webhook_e}")
+            
+        # Sync updated risk category to Elasticsearch
+        try:
+            from src.worker.search_tasks import sync_athlete_to_es
+            c_id = int(coach_id) if 'coach_id' in locals() else 0
+            sync_athlete_to_es.apply_async(args=[int(athlete_id), c_id], queue='default')
+        except Exception as es_e:
+            logger.error(f"Failed to trigger ES sync: {es_e}")
             
         return {"status": "success", "session_id": session_id}
         

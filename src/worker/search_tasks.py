@@ -3,28 +3,36 @@ from src.worker.celery_app import celery_app
 from database.mongo_utils import get_db_connection
 from database.elastic_utils import get_es_client
 import time
+from src.logger import get_logger
 
-@celery_app.task(queue="default")
+logger = get_logger("search_tasks")
+
+@celery_app.task(
+    queue="default",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3
+)
 def sync_athlete_to_es(athlete_id: int, coach_id: int):
     """
     Sync an athlete's data from PostgreSQL and MongoDB to Elasticsearch.
     This enables fast fuzzy searching on the Coach Dashboard.
     """
-    print(f"Starting Elasticsearch sync for athlete {athlete_id}...")
+    logger.info(f"Starting Elasticsearch sync for athlete {athlete_id}...")
     
     es = get_es_client()
     if not es:
-        print("Failed to connect to Elasticsearch. Skipping sync.")
+        logger.error("Failed to connect to Elasticsearch. Skipping sync.")
         return False
         
     try:
         # Import inside task to avoid circular dependencies if any
-        from api.auth import get_user_by_id
+        from database.sql_utils import get_user_by_id
         
         # 1. Fetch from PostgreSQL
         user_data = get_user_by_id(athlete_id)
         if not user_data:
-            print(f"Athlete {athlete_id} not found in Postgres.")
+            logger.info(f"Athlete {athlete_id} not found in Postgres.")
             return False
             
         full_name = user_data.get("full_name", "")
@@ -74,23 +82,28 @@ def sync_athlete_to_es(athlete_id: int, coach_id: int):
         
         # 5. Index into Elasticsearch
         res = es.index(index="athletes", id=str(athlete_id), body=document)
-        print(f"Successfully synced athlete {athlete_id} to Elasticsearch. Result: {res['result']}")
+        logger.info(f"Successfully synced athlete {athlete_id} to Elasticsearch. Result: {res['result']}")
         return True
         
     except Exception as e:
-        print(f"Error syncing athlete {athlete_id} to Elasticsearch: {e}")
+        logger.error(f"Error syncing athlete {athlete_id} to Elasticsearch: {e}")
         return False
 
-@celery_app.task(queue="default")
+@celery_app.task(
+    queue="default",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3
+)
 def sync_coach_to_es(coach_id: int):
     """Sync a coach to the coaches ES index."""
-    print(f"Starting Elasticsearch sync for coach {coach_id}...")
+    logger.info(f"Starting Elasticsearch sync for coach {coach_id}...")
     es = get_es_client()
     if not es:
         return False
         
     try:
-        from api.auth import get_user_by_id
+        from database.sql_utils import get_user_by_id
         user_data = get_user_by_id(coach_id)
         if not user_data or "coach" not in user_data.get("roles", []):
             return False
@@ -103,22 +116,27 @@ def sync_coach_to_es(coach_id: int):
         }
         
         res = es.index(index="coaches", id=str(coach_id), body=document)
-        print(f"Successfully synced coach {coach_id} to Elasticsearch. Result: {res['result']}")
+        logger.info(f"Successfully synced coach {coach_id} to Elasticsearch. Result: {res['result']}")
         return True
     except Exception as e:
-        print(f"Error syncing coach {coach_id} to Elasticsearch: {e}")
+        logger.error(f"Error syncing coach {coach_id} to Elasticsearch: {e}")
         return False
 
-@celery_app.task(queue="default")
+@celery_app.task(
+    queue="default",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3
+)
 def sync_user_global_to_es(user_id: int):
     """Sync any user to the users_global ES index for admin search."""
-    print(f"Starting Elasticsearch sync for user {user_id}...")
+    logger.info(f"Starting Elasticsearch sync for user {user_id}...")
     es = get_es_client()
     if not es:
         return False
         
     try:
-        from api.auth import get_user_by_id
+        from database.sql_utils import get_user_by_id
         user_data = get_user_by_id(user_id)
         if not user_data:
             return False
@@ -133,8 +151,8 @@ def sync_user_global_to_es(user_id: int):
         }
         
         res = es.index(index="users_global", id=str(user_id), body=document)
-        print(f"Successfully synced user {user_id} to Elasticsearch. Result: {res['result']}")
+        logger.info(f"Successfully synced user {user_id} to Elasticsearch. Result: {res['result']}")
         return True
     except Exception as e:
-        print(f"Error syncing user {user_id} to Elasticsearch: {e}")
+        logger.error(f"Error syncing user {user_id} to Elasticsearch: {e}")
         return False

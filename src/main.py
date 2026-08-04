@@ -108,7 +108,12 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     biomechanics_csv = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_biomechanics.csv")
     if os.path.exists(biomechanics_csv):
         bio_df = pd.read_csv(biomechanics_csv)
-        key_frames = get_key_moment_frames(bio_df, max_frames=4)
+        landmarks_path = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_landmarks.csv")
+        if os.path.exists(landmarks_path):
+            landmarks_df = pd.read_csv(landmarks_path)
+            key_frames = get_key_moment_frames(bio_df, max_frames=4, landmarks_df=landmarks_df)
+        else:
+            key_frames = get_key_moment_frames(bio_df, max_frames=4)
         
 
         
@@ -140,8 +145,7 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
             logger.warning("Could not import Cloudinary modules. Skipping image uploads.")
         
         if key_moments_urls:
-            with open("key_moments_debug.txt", "w") as f:
-                f.write(f"URLs: {key_moments_urls}")
+            logger.debug(f"Extracted key moments URLs: {key_moments_urls}")
             try:
                 from database.mongo_utils import update_session_key_moments
                 update_session_key_moments(session_id, key_moments_urls)
@@ -162,8 +166,8 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     for file_path in [landmarks_csv, biomechanics_csv, summary_csv, risk_score_csv, annotated_video]:
         try:
             if os.path.exists(file_path):
-                # os.remove(file_path)
-                logger.info(f"Skipped deleting {os.path.basename(file_path)}")
+                os.remove(file_path)
+                logger.info(f"Deleted {os.path.basename(file_path)}")
         except Exception as e:
             logger.warning(f"Failed to delete {file_path}: {e}")
 
@@ -172,8 +176,8 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     img_pattern = os.path.join(ANNOTATED_IMAGES_DIR, f"{video_name}_frame_*.jpg")
     for img_path in glob.glob(img_pattern):
         try:
-            # os.remove(img_path)
-            logger.info(f"Skipped deleting {os.path.basename(img_path)}")
+            os.remove(img_path)
+            logger.info(f"Deleted {os.path.basename(img_path)}")
         except Exception as e:
             logger.warning(f"Failed to delete {img_path}: {e}")
 

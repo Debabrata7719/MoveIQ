@@ -170,7 +170,7 @@ def calculate_fatigue_score(biomechanics_df: pd.DataFrame):
     return score, flagged
 
 
-def get_key_moment_frames(biomechanics_df: pd.DataFrame, max_frames=4) -> list:
+def get_key_moment_frames(biomechanics_df: pd.DataFrame, max_frames=4, landmarks_df=None) -> list:
     """
     Analyzes knee angles to find the local minima (deepest squats).
     Returns a list of frame indices for the deepest points of the squats.
@@ -180,7 +180,24 @@ def get_key_moment_frames(biomechanics_df: pd.DataFrame, max_frames=4) -> list:
     for col in ["left_knee_angle", "right_knee_angle"]:
         if col not in biomechanics_df.columns:
             continue
-        signal = -biomechanics_df[col].values
+            
+        signal_series = pd.Series(-biomechanics_df[col].values)
+        
+        # Filter out low-confidence frames if landmarks_df is provided
+        if landmarks_df is not None:
+            prefix = col.replace("_knee_angle", "") # "left" or "right"
+            hip_vis = f"{prefix}_hip_visibility"
+            knee_vis = f"{prefix}_knee_visibility"
+            ankle_vis = f"{prefix}_ankle_visibility"
+            
+            if hip_vis in landmarks_df.columns and knee_vis in landmarks_df.columns and ankle_vis in landmarks_df.columns:
+                valid_mask = (landmarks_df[hip_vis] >= 0.5) & (landmarks_df[knee_vis] >= 0.5) & (landmarks_df[ankle_vis] >= 0.5)
+                if len(valid_mask) == len(signal_series):
+                    signal_series.loc[~valid_mask] = np.nan
+        
+        # Interpolate over the removed glitchy frames so find_peaks has a smooth signal
+        signal = signal_series.interpolate(method='linear').ffill().bfill().values
+        
         peaks, _ = find_peaks(signal, distance=45, prominence=20)
         
         # We only need the frame indices, which match the DataFrame index if it's 0-indexed.
