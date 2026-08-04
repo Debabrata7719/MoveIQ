@@ -304,3 +304,76 @@ def mark_notification_read(notif_id: str, user_id) -> bool:
         {"$set": {"is_read": True}}
     )
     return result.modified_count > 0
+
+# =========================================================================
+# CHAT SYSTEM (WEBSOCKETS & REST)
+# =========================================================================
+
+def save_chat_message(sender_id: int, receiver_id: int, message_text: str) -> dict:
+    """Saves a new chat message to MongoDB and returns the inserted document."""
+    db = get_db_connection()
+    collection = db["chat_messages"]
+    
+    document = {
+        "sender_id": int(sender_id),
+        "receiver_id": int(receiver_id),
+        "message_text": message_text,
+        "status": "delivered",  # Initially delivered (white double tick)
+        "created_at": datetime.utcnow()
+    }
+    
+    result = collection.insert_one(document)
+    document["_id"] = str(result.inserted_id)
+    document["created_at"] = document["created_at"].isoformat()
+    return document
+
+def get_chat_history(user_a_id: int, user_b_id: int, limit: int = 50) -> list:
+    """Retrieves chat history between two users, ordered chronologically."""
+    db = get_db_connection()
+    collection = db["chat_messages"]
+    
+    uA = int(user_a_id)
+    uB = int(user_b_id)
+    
+    messages = list(collection.find(
+        {"$or": [
+            {"sender_id": uA, "receiver_id": uB},
+            {"sender_id": uB, "receiver_id": uA}
+        ]}
+    ).sort("created_at", -1).limit(limit))
+    
+    # Reverse to return chronological order
+    messages.reverse()
+    
+    for m in messages:
+        m["_id"] = str(m["_id"])
+        if "created_at" in m and isinstance(m["created_at"], datetime):
+            m["created_at"] = m["created_at"].isoformat()
+            
+    return messages
+
+def mark_messages_as_read(sender_id: int, receiver_id: int) -> int:
+    """Marks all messages sent BY sender_id TO receiver_id as read (blue double tick).
+       Returns the number of messages updated."""
+    db = get_db_connection()
+    collection = db["chat_messages"]
+    
+    result = collection.update_many(
+        {"sender_id": int(sender_id), "receiver_id": int(receiver_id), "status": "delivered"},
+        {"$set": {"status": "read"}}
+    )
+    return result.modified_count
+
+def get_unread_chat_counts(user_id: int) -> dict:
+    """Gets the count of unread messages for a user, grouped by sender_id."""
+    db = get_db_connection()
+    collection = db["chat_messages"]
+    
+    pipeline = [
+        {"$match": {"receiver_id": int(user_id), "status": "delivered"}},
+        {"$group": {"_id": "$sender_id", "unread_count": {"$sum": 1}}}
+    ]
+    results = collection.aggregate(pipeline)
+    
+    return {str(r["_id"]): r["unread_count"] for r in results}
+
