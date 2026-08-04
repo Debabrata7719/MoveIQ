@@ -33,6 +33,7 @@ import {
 } from './coach/SupportModal';
 
 import { PdfReport } from './pdf-report';
+import toast from 'react-hot-toast';
 
 
 interface CoachDashboardProps {
@@ -47,6 +48,7 @@ export function CoachDashboard({ token, currentView, userName, profilePictureUrl
   // Navigation / View States synced with parent sidebar routing
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const targetTab = currentView === 'my_athletes' ? 'athletes' : currentView;
@@ -102,10 +104,17 @@ export function CoachDashboard({ token, currentView, userName, profilePictureUrl
 
   useEffect(() => {
     if (token) {
-      fetchStats();
-      fetchAthletes();
-      fetchNotifications();
-      fetchTeams();
+      const loadAll = async () => {
+        setIsLoading(true);
+        await Promise.all([
+          fetchStats(),
+          fetchAthletes(),
+          fetchNotifications(),
+          fetchTeams()
+        ]);
+        setIsLoading(false);
+      };
+      loadAll();
     }
   }, [token]);
 
@@ -526,7 +535,7 @@ MoveIQ Injury Prevention System
       pdf.save(`MoveIQ_Report_${session.video_name || session.session_id.substring(0,6)}.pdf`);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
-      alert("Failed to generate PDF report. Please try again.");
+      toast.error("Failed to generate PDF report. Please try again.");
     } finally {
       setIsGeneratingPDF(false);
       setPdfData(null);
@@ -554,14 +563,14 @@ MoveIQ Injury Prevention System
             setAthleteHistory((prev: any[]) => prev.map((s: any) => s.session_id === sessionId ? { ...s, recommendations: recs } : s));
           }
         }
-        alert("Recommendation generated successfully!");
+        toast.success("Recommendation generated successfully!");
       } else {
         console.error("Failed to generate recommendations");
-        alert("Failed to generate recommendations. Please try again.");
+        toast.error("Failed to generate recommendations. Please try again.");
       }
     } catch (e) {
       console.error("Error generating recommendations:", e);
-      alert("Error generating recommendations.");
+      toast.error("Error generating recommendations.");
     } finally {
       setGeneratingRecId(null);
     }
@@ -592,6 +601,7 @@ MoveIQ Injury Prevention System
             onSelectAthlete={handleViewAthlete}
             searchQuery={searchQuery}
             stats={stats}
+            isLoading={isLoading}
           />
         )}
 
@@ -606,6 +616,7 @@ MoveIQ Injury Prevention System
             onDownloadPDF={handleDownloadPDF}
             onGenerateRecommendations={handleGenerateRecommendations}
             generatingRecId={generatingRecId}
+            isLoading={isLoading}
           />
         )}
 

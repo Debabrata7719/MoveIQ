@@ -70,13 +70,11 @@ export const Sidebar = ({
             <div>
                 {/* Logo Area */}
                 <div className="p-6 border-b border-[#c3c6d8] flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#004ccd] flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                        <Activity className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="font-bold text-xl text-[#004ccd] tracking-tight leading-none">MoveIQ</h1>
-                        <p className="text-[10px] font-medium text-[#424656] mt-1">Injury Risk Management</p>
-                    </div>
+                    <img 
+                        src="/logo.png" 
+                        alt="MoveIQ Logo" 
+                        className="h-8 w-auto object-contain drop-shadow-sm" 
+                    />
                 </div>
 
                 {/* Navigation Links */}

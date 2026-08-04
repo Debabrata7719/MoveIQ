@@ -13,6 +13,7 @@ interface DashboardViewProps {
   coachSearchResults: any[];
   isSearchingCoaches: boolean;
   onRequestCoach: (coachId: number) => void;
+  isLoading?: boolean;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -27,6 +28,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   coachSearchResults,
   isSearchingCoaches,
   onRequestCoach,
+  isLoading
 }) => {
   const latestSession = sessions[0];
   const hasSessions = sessions.length > 0;
@@ -49,18 +51,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-8 animate-fadeIn">
       {/* Page Header */}
       <div>
-        <h1 className="text-[32px] leading-[40px] font-extrabold text-[#191c1f] tracking-tight">
+        <h1 className="text-[32px] leading-[40px] font-extrabold text-[#191c1f] dark:text-white tracking-tight">
           Athlete Dashboard
         </h1>
-        <p className="text-[15px] text-[#424656] mt-1 font-normal">
+        <p className="text-[15px] text-[#424656] dark:text-slate-400 mt-1 font-normal">
           Your biomechanics &amp; injury risk overview
         </p>
       </div>
 
       {/* Top Stat Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading ? (
+          Array(4).fill(0).map((_, i) => (
+            <div key={i} className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl p-6 flex flex-col justify-between h-36">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-24 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                <div className="w-5 h-5 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse"></div>
+              </div>
+              <div className="w-16 h-10 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+            </div>
+          ))
+        ) : (
+          <>
         {/* Stat Card 1: Overall Health */}
-        <div className="bg-white border border-[#c3c6d8] rounded-xl p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-4">
             <span className="text-[12px] font-bold text-[#424656] uppercase tracking-wider">
               Overall Health
@@ -119,6 +133,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Main Grid Layout */}
@@ -126,13 +142,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Left Column (2/3 width) */}
         <div className="lg:col-span-8 space-y-6">
           {/* Latest Session Analysis */}
-          <div className="bg-white border border-[#c3c6d8] rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-6 border-b border-[#c3c6d8] flex justify-between items-center bg-[#faf8ff]">
-              <h2 className="text-[20px] font-bold text-[#191c1f]">
+          <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+            <div className="p-6 border-b border-[#c3c6d8] dark:border-slate-800 flex justify-between items-center bg-[#faf8ff] dark:bg-slate-900/50">
+              <h2 className="text-[20px] font-bold text-[#191c1f] dark:text-white">
                 Latest Session Analysis
               </h2>
               {hasSessions && (
-                <span className="font-mono text-[13px] text-[#424656] bg-white px-2.5 py-1 rounded border border-[#c3c6d8] max-w-[200px] truncate" title={latestSession.video_name}>
+                <span className="font-mono text-[13px] text-[#424656] dark:text-slate-400 bg-white dark:bg-slate-800 px-2.5 py-1 rounded border border-[#c3c6d8] dark:border-slate-700 max-w-[200px] truncate" title={latestSession.video_name}>
                   {latestSession.video_name}
                 </span>
               )}
@@ -142,10 +158,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <>
                   <div className="mb-6">
                     <div className="flex justify-between text-[12px] font-bold mb-2">
-                      <span className="text-[#424656] uppercase">Biomechanical Efficiency</span>
-                      <span className="text-[#004ccd] font-bold">{(latestSession.risk_data?.biomechanical_efficiency_score ?? 0)}%</span>
+                      <span className="text-[#424656] dark:text-slate-400 uppercase">Biomechanical Efficiency</span>
+                      <span className="text-[#004ccd] dark:text-blue-400 font-bold">{(latestSession.risk_data?.biomechanical_efficiency_score ?? 0)}%</span>
                     </div>
-                    <div className="w-full h-2 bg-[#faf8ff] border border-[#c3c6d8] rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-[#faf8ff] dark:bg-slate-800 border border-[#c3c6d8] dark:border-slate-700 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-[#004ccd] rounded-full transition-all duration-500"
                         style={{ width: `${(latestSession.risk_data?.biomechanical_efficiency_score ?? 0)}%` }}
@@ -154,11 +170,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
 
                   <div className="grid grid-cols-3 gap-4 mb-8">
-                    <div className="p-4 bg-[#faf8ff] rounded-lg border border-[#c3c6d8] text-center">
-                      <div className="text-[12px] text-[#424656] uppercase font-bold mb-1">
+                    <div className="p-4 bg-[#faf8ff] dark:bg-slate-800/50 rounded-lg border border-[#c3c6d8] dark:border-slate-700 text-center">
+                      <div className="text-[12px] text-[#424656] dark:text-slate-400 uppercase font-bold mb-1">
                         Knee Valgus
                       </div>
-                      <div className="text-[18px] font-extrabold text-[#191c1f]">
+                      <div className="text-[18px] font-extrabold text-[#191c1f] dark:text-white">
                         {latestValgusAngle !== null ? `${latestValgusAngle.toFixed(1)}°` : '--'}
                       </div>
                     </div>
@@ -197,7 +213,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </button>
                     <button
                       onClick={() => onSelectTab('recommendations_history')}
-                      className="flex-1 bg-white border border-[#c3c6d8] text-[#004ccd] py-3 px-4 rounded-lg font-bold text-[12px] uppercase tracking-wide hover:bg-[#faf8ff] transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 bg-white dark:bg-slate-800 border border-[#c3c6d8] dark:border-slate-700 text-[#004ccd] dark:text-blue-400 py-3 px-4 rounded-lg font-bold text-[12px] uppercase tracking-wide hover:bg-[#faf8ff] dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
                     >
                       <FileText className="w-4 h-4" /> Get AI Recommendation
                     </button>
@@ -222,8 +238,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Right Column (1/3 width) */}
         <div className="lg:col-span-4 space-y-6">
           {/* Coach Assignment Widget */}
-          <div className="bg-white border border-[#c3c6d8] rounded-xl p-6 hover:shadow-md transition-shadow">
-            <h3 className="text-xs font-bold text-[#424656] uppercase tracking-wider mb-4">
+          <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <h3 className="text-xs font-bold text-[#424656] dark:text-slate-400 uppercase tracking-wider mb-4">
               My Assigned Coach
             </h3>
 
@@ -315,10 +331,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           {/* Recent Sessions List */}
           <div className="bg-white border border-[#c3c6d8] rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-6 border-b border-[#c3c6d8] bg-[#faf8ff]">
+            <div className="p-6 border-b border-[#c3c6d8] bg-[#faf8ff] dark:bg-slate-900/50">
               <h2 className="text-[20px] font-bold text-[#191c1f]">Recent Sessions</h2>
             </div>
-            {hasSessions ? (
+            {isLoading ? (
+              <ul className="divide-y divide-[#c3c6d8]">
+                {Array(3).fill(0).map((_, i) => (
+                  <li key={i} className="p-4 flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                      <div className="w-20 h-3 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                    </div>
+                    <div className="w-16 h-5 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                  </li>
+                ))}
+              </ul>
+            ) : hasSessions ? (
               <>
                 <ul className="divide-y divide-[#c3c6d8]">
                   {sessions.slice(0, 3).map((s) => {
@@ -370,12 +398,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white border border-[#c3c6d8] rounded-xl p-6 hover:shadow-md transition-shadow">
-            <h2 className="text-[20px] font-bold text-[#191c1f] mb-4">Quick Actions</h2>
+          <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <h2 className="text-[20px] font-bold text-[#191c1f] dark:text-white mb-4">Quick Actions</h2>
             <div className="space-y-3">
               <button
                 onClick={() => onSelectTab('dashboard')}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#c3c6d8] hover:border-[#004ccd] hover:text-[#004ccd] hover:bg-[#faf8ff] transition-all text-[#191c1f] text-left"
+                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#c3c6d8] dark:border-slate-700 hover:border-[#004ccd] dark:hover:border-blue-400 hover:text-[#004ccd] dark:hover:text-blue-400 hover:bg-[#faf8ff] dark:hover:bg-slate-800 transition-all text-[#191c1f] dark:text-slate-300 text-left"
               >
                 <UploadCloud className="w-5 h-5 text-[#004ccd]" />
                 <span className="text-[14px] font-bold">Upload New Video</span>

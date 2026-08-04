@@ -11,6 +11,7 @@ import {
   Cpu,
   Loader2
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface UploadVideoViewProps {
   athletes: any[];
@@ -81,11 +82,11 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
 
   const handleRunAnalysis = async () => {
     if (!selectedAthleteId) {
-      alert("Please select a target athlete.");
+      toast.error("Please select a target athlete.");
       return;
     }
     if (!selectedFile && !videoLabel) {
-      alert("Please select or upload a video file.");
+      toast.error("Please select or upload a video file.");
       return;
     }
 

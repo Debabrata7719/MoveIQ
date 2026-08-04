@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Trash2, Loader2 } from 'lucide-react';
 import { PdfAthleteReport } from '../pdf-athlete-report';
+import toast from 'react-hot-toast';
 
 interface ReportsViewProps {
   sessions: any[];
@@ -163,7 +164,7 @@ MoveIQ Injury Prevention System
         pdf.save(`MoveIQ_Athlete_Report_${cleanName}.pdf`);
       } catch (err) {
         console.error("Failed to download PDF report", err);
-        alert("Failed to download high-fidelity PDF report.");
+        toast.error("Failed to download high-fidelity PDF report.");
       } finally {
         setTimeout(() => {
           setIsDownloading(null);

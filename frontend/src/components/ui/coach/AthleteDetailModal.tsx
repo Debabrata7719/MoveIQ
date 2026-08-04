@@ -156,9 +156,9 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-[#c3c6d8] my-8 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl border border-[#c3c6d8] dark:border-slate-800 my-8 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
-        <div className="p-6 border-b border-[#c3c6d8] flex justify-between items-start bg-[#f7f9fd]">
+        <div className="p-6 border-b border-[#c3c6d8] dark:border-slate-800 flex justify-between items-start bg-[#f7f9fd] dark:bg-slate-800/50">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-[#004ccd] text-white font-bold text-xl">
               {athlete.avatarUrl || athlete.profile_picture_url || athlete.profile?.profile_picture_url ? (
@@ -173,7 +173,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h3 className="text-xl font-extrabold text-[#191c1f]">
+                <h3 className="text-xl font-extrabold text-[#191c1f] dark:text-white">
                   {fullName}
                 </h3>
                 <span
@@ -191,7 +191,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
                   {athleteRisk}
                 </span>
               </div>
-              <p className="text-xs text-[#424656] mt-1">
+              <p className="text-xs text-[#424656] dark:text-slate-400 mt-1">
                 {athlete.sport || athlete.profile?.sport || 'Soccer'} • {athlete.position || 'Athlete'} | {athlete.email}
               </p>
             </div>
@@ -199,7 +199,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-full text-[#424656] hover:bg-[#e0e2e6] hover:text-[#191c1f]"
+            className="p-2 rounded-full text-[#424656] dark:text-slate-400 hover:bg-[#e0e2e6] dark:hover:bg-slate-700 hover:text-[#191c1f] dark:hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
@@ -209,8 +209,8 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {/* Top Biometric Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-[#f2f4f8] p-3.5 rounded-xl text-center">
-              <span className="text-[11px] font-medium text-[#424656] uppercase block">
+            <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3.5 rounded-xl text-center">
+              <span className="text-[11px] font-medium text-[#424656] dark:text-slate-400 uppercase block">
                 Strain Load
               </span>
               <span className={`text-xl font-bold ${isHigh ? 'text-[#ba1a1a]' : isMedium ? 'text-[#b97b00]' : 'text-[#11801c]'}`}>
@@ -218,42 +218,42 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
               </span>
             </div>
 
-            <div className="bg-[#f2f4f8] p-3.5 rounded-xl text-center">
-              <span className="text-[11px] font-medium text-[#424656] uppercase block">
+            <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3.5 rounded-xl text-center">
+              <span className="text-[11px] font-medium text-[#424656] dark:text-slate-400 uppercase block">
                 Symmetry Score
               </span>
-              <span className="text-xl font-bold text-[#191c1f]">
+              <span className="text-xl font-bold text-[#191c1f] dark:text-white">
                 {athlete.keyStats?.symmetryScore ?? (athleteHistory?.history?.[0]?.risk_data?.symmetry_score !== undefined ? `${athleteHistory.history[0].risk_data.symmetry_score}%` : 'N/A')}
               </span>
             </div>
 
-            <div className="bg-[#f2f4f8] p-3.5 rounded-xl text-center">
-              <span className="text-[11px] font-medium text-[#424656] uppercase block">
+            <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3.5 rounded-xl text-center">
+              <span className="text-[11px] font-medium text-[#424656] dark:text-slate-400 uppercase block">
                 Fatigue Index
               </span>
-              <span className="text-xl font-bold text-[#191c1f]">
+              <span className="text-xl font-bold text-[#191c1f] dark:text-white">
                 {athlete.keyStats?.fatigueIndex ?? (athleteHistory?.history?.[0]?.risk_data?.fatigue_index !== undefined ? `${athleteHistory.history[0].risk_data.fatigue_index}%` : 'N/A')}
               </span>
             </div>
 
-            <div className="bg-[#f2f4f8] p-3.5 rounded-xl text-center">
-              <span className="text-[11px] font-medium text-[#424656] uppercase block">
+            <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3.5 rounded-xl text-center">
+              <span className="text-[11px] font-medium text-[#424656] dark:text-slate-400 uppercase block">
                 Demographics
               </span>
-              <span className="text-xs font-bold text-[#191c1f] block mt-1">
+              <span className="text-xs font-bold text-[#191c1f] dark:text-white block mt-1">
                 {athlete.age || athlete.profile?.age || '--'}y • {athlete.heightCm || athlete.profile?.height || '--'}cm • {athlete.weightKg || athlete.profile?.weight || '--'}kg
               </span>
             </div>
           </div>
 
           {/* Strain Load Trend Chart */}
-          <div className="bg-white border border-[#c3c6d8] rounded-xl p-5 space-y-3">
+          <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl p-5 space-y-3">
             <div className="flex justify-between items-center">
-              <h4 className="text-sm font-bold text-[#191c1f] flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-[#004ccd]" />
+              <h4 className="text-sm font-bold text-[#191c1f] dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#004ccd] dark:text-blue-400" />
                 7-Day Strain Load Timeline
               </h4>
-              <span className="text-xs text-[#424656]">
+              <span className="text-xs text-[#424656] dark:text-slate-400">
                 Last scan: {lastScanLabel}
               </span>
             </div>
@@ -288,9 +288,9 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
 
           {/* Biomechanical Notes & Coach Instructions */}
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#191c1f] flex items-center justify-between">
+            <label className="text-sm font-bold text-[#191c1f] dark:text-white flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#004ccd]" />
+                <FileText className="w-4 h-4 text-[#004ccd] dark:text-blue-400" />
                 Biomechanical Evaluation & Coach Protocol
               </span>
               {isSaved && (
@@ -304,7 +304,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Enter custom rehab notes, targeted joint mobility drills, or training load constraints..."
-              className="w-full p-3 text-xs text-[#191c1f] bg-white border border-[#c3c6d8] rounded-xl focus:outline-none focus:border-[#004ccd] focus:ring-1 focus:ring-[#004ccd]"
+              className="w-full p-3 text-xs text-[#191c1f] dark:text-slate-200 bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl focus:outline-none focus:border-[#004ccd] focus:ring-1 focus:ring-[#004ccd] dark:focus:border-blue-400 dark:focus:ring-blue-400"
             />
             <div className="flex justify-end">
               <button
@@ -318,26 +318,26 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
 
           {/* Latest Session Report & PDF Download */}
           {athleteHistory && athleteHistory.history && athleteHistory.history.length > 0 && (
-            <div className="bg-white border border-[#c3c6d8] p-5 rounded-xl space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#004ccd] flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 p-5 rounded-xl space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#004ccd] dark:text-blue-400 flex items-center gap-2">
                 <Activity className="w-4 h-4" /> Latest Session Report
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div className="bg-[#f2f4f8] p-3 rounded-lg border border-[#c3c6d8]/40">
-                  <span className="text-[10px] text-[#424656] font-medium uppercase block">Health Score</span>
-                  <span className="text-lg font-bold text-[#004ccd]">{athleteHistory.history[0].risk_data?.overall_health_score || 0}</span>
+                <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3 rounded-lg border border-[#c3c6d8]/40 dark:border-slate-700/40">
+                  <span className="text-[10px] text-[#424656] dark:text-slate-400 font-medium uppercase block">Health Score</span>
+                  <span className="text-lg font-bold text-[#004ccd] dark:text-blue-400">{athleteHistory.history[0].risk_data?.overall_health_score || 0}</span>
                 </div>
-                <div className="bg-[#f2f4f8] p-3 rounded-lg border border-[#c3c6d8]/40">
-                  <span className="text-[10px] text-[#424656] font-medium uppercase block">Injury Risk</span>
-                  <span className="text-lg font-bold text-[#ba1a1a]">{athleteHistory.history[0].risk_data?.final_risk_score || 0}</span>
+                <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3 rounded-lg border border-[#c3c6d8]/40 dark:border-slate-700/40">
+                  <span className="text-[10px] text-[#424656] dark:text-slate-400 font-medium uppercase block">Injury Risk</span>
+                  <span className="text-lg font-bold text-[#ba1a1a] dark:text-red-400">{athleteHistory.history[0].risk_data?.final_risk_score || 0}</span>
                 </div>
-                <div className="bg-[#f2f4f8] p-3 rounded-lg border border-[#c3c6d8]/40">
-                  <span className="text-[10px] text-[#424656] font-medium uppercase block">Quality Score</span>
-                  <span className="text-lg font-bold text-[#11801c]">{athleteHistory.history[0].risk_data?.movement_quality_score || 0}</span>
+                <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3 rounded-lg border border-[#c3c6d8]/40 dark:border-slate-700/40">
+                  <span className="text-[10px] text-[#424656] dark:text-slate-400 font-medium uppercase block">Quality Score</span>
+                  <span className="text-lg font-bold text-[#11801c] dark:text-green-500">{athleteHistory.history[0].risk_data?.movement_quality_score || 0}</span>
                 </div>
-                <div className="bg-[#f2f4f8] p-3 rounded-lg border border-[#c3c6d8]/40">
-                  <span className="text-[10px] text-[#424656] font-medium uppercase block">Efficiency</span>
-                  <span className="text-lg font-bold text-[#304db9]">{athleteHistory.history[0].risk_data?.biomechanical_efficiency_score || 0}</span>
+                <div className="bg-[#f2f4f8] dark:bg-slate-800/50 p-3 rounded-lg border border-[#c3c6d8]/40 dark:border-slate-700/40">
+                  <span className="text-[10px] text-[#424656] dark:text-slate-400 font-medium uppercase block">Efficiency</span>
+                  <span className="text-lg font-bold text-[#304db9] dark:text-indigo-400">{athleteHistory.history[0].risk_data?.biomechanical_efficiency_score || 0}</span>
                 </div>
               </div>
 
@@ -346,7 +346,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
                   <button
                     onClick={() => onGenerateRecommendations(athleteHistory.history[0].session_id, athleteHistory.history[0].video_name, athlete.id || athlete.user_id)}
                     disabled={generatingRecId === athleteHistory.history[0].session_id}
-                    className="flex-1 py-2 px-2 bg-[#f2f4f8] hover:bg-[#e0e2e6] text-[#004ccd] text-xs font-semibold rounded-lg border border-[#004ccd]/30 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    className="flex-1 py-2 px-2 bg-[#f2f4f8] dark:bg-slate-800 hover:bg-[#e0e2e6] dark:hover:bg-slate-700 text-[#004ccd] dark:text-blue-400 text-xs font-semibold rounded-lg border border-[#004ccd]/30 dark:border-blue-400/30 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
                     title="Generate AI Recommendations"
                   >
                     {generatingRecId === athleteHistory.history[0].session_id ? (
@@ -360,7 +360,7 @@ export const AthleteDetailModal: React.FC<AthleteDetailModalProps> = ({
                 {onOpenSession && (
                   <button
                     onClick={() => onOpenSession(athleteHistory.history[0])}
-                    className="flex-1 py-2 px-2 bg-[#f2f4f8] hover:bg-[#e0e2e6] text-[#191c1f] text-xs font-semibold rounded-lg border border-[#c3c6d8] transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 py-2 px-2 bg-[#f2f4f8] dark:bg-slate-800 hover:bg-[#e0e2e6] dark:hover:bg-slate-700 text-[#191c1f] dark:text-slate-300 text-xs font-semibold rounded-lg border border-[#c3c6d8] dark:border-slate-700 transition-colors flex items-center justify-center gap-1"
                     title="Preview Full Report"
                   >
                     <FileText className="w-3.5 h-3.5 text-[#737687]" /> View

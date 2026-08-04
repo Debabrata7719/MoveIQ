@@ -192,13 +192,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
         {/* Header Title */}
         <div className="z-10 flex items-center gap-3">
           <img 
-            alt="MoveIQ Icon" 
-            className="w-10 h-10 object-contain rounded-full shadow-sm bg-white" 
-            src="/images/moveiq_icon.png"
+            alt="MoveIQ Logo" 
+            className="h-10 w-auto object-contain drop-shadow-sm" 
+            src="/logo.png"
           />
           <div className="flex items-baseline gap-2">
-            <span className="font-bold text-[28px] text-[#0F172A] tracking-tight">MoveIQ</span>
-            <span className="text-[#c3c6d7] text-lg font-bold">—</span>
+            <span className="text-[#c3c6d7] text-lg font-bold ml-2">—</span>
             <span className="font-semibold text-[18px] text-[#475569] tracking-tight">See risk before it becomes an injury</span>
           </div>
         </div>
@@ -248,11 +247,10 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
         {/* Mobile Header (Hidden on Desktop) */}
         <div className="w-full max-w-[440px] flex lg:hidden items-center gap-2.5 mb-8">
           <img 
-            alt="MoveIQ Icon" 
-            className="w-10 h-10 object-contain rounded-full shadow-sm bg-[#f2f4f8]" 
-            src="/images/moveiq_icon.png"
+            alt="MoveIQ Logo" 
+            className="h-10 w-auto object-contain drop-shadow-sm" 
+            src="/logo.png"
           />
-          <span className="text-[24px] font-bold text-[#0F172A] tracking-tight">MoveIQ</span>
         </div>
 
         <div className="w-full max-w-[440px] flex flex-col">

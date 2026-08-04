@@ -74,10 +74,17 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ token }) => 
       }
     };
 
-    ws.onerror = (err) => console.error("WebSocket error", err);
+    ws.onerror = (err) => {
+      // Ignore errors if we are actively closing the socket (e.g. React StrictMode unmounts)
+      if (ws.readyState !== WebSocket.CLOSING && ws.readyState !== WebSocket.CLOSED) {
+        console.error("WebSocket error", err);
+      }
+    };
     
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
   }, [token]);
 

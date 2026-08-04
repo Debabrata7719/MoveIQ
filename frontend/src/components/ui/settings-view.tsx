@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Moon, Download, Info, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Lock, Moon, Download, Info, CheckCircle2, AlertCircle, Loader2, Webhook } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { CoachWebhooks } from './coach-webhooks';
 
 interface SettingsViewProps {
   token: string;
@@ -15,7 +17,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView = ({ token, user, onUserUpdate }: SettingsViewProps) => {
-  const [activeTab, setActiveTab] = useState<'account' | 'appearance' | 'downloads' | 'about'>('account');
+  const [activeTab, setActiveTab] = useState<'account' | 'appearance' | 'downloads' | 'about' | 'webhooks'>('account');
   
   // Account State
   const [fullName, setFullName] = useState(user?.full_name || '');
@@ -122,8 +124,9 @@ export const SettingsView = ({ token, user, onUserUpdate }: SettingsViewProps) =
     { id: 'account', label: 'Account', icon: User },
     { id: 'appearance', label: 'Appearance', icon: Moon },
     { id: 'downloads', label: 'Downloads Format', icon: Download },
+    ...(user.roles?.includes('coach') ? [{ id: 'webhooks', label: 'Webhooks', icon: Webhook }] as const : []),
     { id: 'about', label: 'About', icon: Info }
-  ] as const;
+  ];
 
   return (
     <div className="max-w-4xl mx-auto w-full flex flex-col md:flex-row gap-8 text-[#191c1f] text-left animate-fadeIn">
@@ -137,7 +140,7 @@ export const SettingsView = ({ token, user, onUserUpdate }: SettingsViewProps) =
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-semibold border ${
                 isActive 
                   ? 'bg-[#dbe1ff] text-[#004ccd] border-[#004ccd]/20 shadow-sm' 
@@ -246,7 +249,7 @@ export const SettingsView = ({ token, user, onUserUpdate }: SettingsViewProps) =
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(user.coach_code || '');
-                      alert("Coach Invite Code copied to clipboard!");
+                      toast.success("Coach Invite Code copied to clipboard!");
                     }}
                     className="px-4 py-3 bg-[#f3f3fe] border border-[#c3c6d7] hover:bg-[#e2e6ff] text-[#004ccd] text-xs font-bold rounded-xl transition-all shadow-sm"
                   >
@@ -373,6 +376,11 @@ export const SettingsView = ({ token, user, onUserUpdate }: SettingsViewProps) =
               </div>
             </div>
           </div>
+        )}
+
+        {/* WEBHOOKS TAB */}
+        {activeTab === 'webhooks' && user.roles?.includes('coach') && (
+          <CoachWebhooks token={token} />
         )}
 
       </div>

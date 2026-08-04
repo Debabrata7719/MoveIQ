@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { HeartPulse, AlertTriangle, Bone, FileText, Download, X, Loader2, Play } from 'lucide-react';
+import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import { PdfAnalyticsOnly } from './pdf-analytics-only';
 import { PdfRecommendationOnly } from './pdf-recommendation-only';
@@ -69,7 +70,7 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
 
     const handlePlayVideo = () => {
         if (!videoUrl) {
-            alert("Video storage is currently disabled in development (Cloudinary API key commented out). When you re-enable it, the video will play here!");
+            toast.error("Video storage is currently disabled in development (Cloudinary API key commented out). When you re-enable it, the video will play here!");
             return;
         }
         setIsVideoModalOpen(true);

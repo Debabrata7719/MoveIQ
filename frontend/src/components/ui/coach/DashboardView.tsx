@@ -21,6 +21,7 @@ interface DashboardViewProps {
   onSelectAthlete: (athlete: any) => void;
   searchQuery: string;
   stats?: any;
+  isLoading?: boolean;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -29,7 +30,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   setActiveTab,
   onSelectAthlete,
   searchQuery,
-  stats
+  stats,
+  isLoading
 }) => {
   // Compute metrics strictly from real live data or stats
   const highRiskCount = stats?.high_risk ?? athletes.filter(a => a.risk_category?.toLowerCase().includes('high') || a.riskLevel === 'High Risk').length;
@@ -111,19 +113,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Summary Metrics Bento Grid */}
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {/* Total Athletes */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white">
+        {isLoading ? (
+          Array(6).fill(0).map((_, i) => (
+            <div key={i} className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border dark:border-slate-800">
+              <div className="flex justify-between items-start">
+                <div className="w-20 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                <div className="w-5 h-5 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse"></div>
+              </div>
+              <div>
+                <div className="w-12 h-8 bg-slate-200 dark:bg-slate-800 rounded animate-pulse mb-2"></div>
+                <div className="w-24 h-3 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <>
+        {/* Stat Card 1: Total Athletes */}
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border-t-4 border-t-[#004ccd] dark:border-t-blue-500 border border-[#c3c6d8] dark:border-slate-800">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">Total Athletes</h3>
-            <Users className="w-5 h-5 text-[#004ccd]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">Total Athletes</h3>
+            <Users className="w-5 h-5 text-[#004ccd] dark:text-blue-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#191c1f]">
+            <p className="text-2xl font-bold text-[#191c1f] dark:text-white">
               {displayTotal.toLocaleString()}
             </p>
-            <p className="text-xs font-medium text-[#424656] mt-1">
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               {stats?.weekly_growth ? (
-                <span className="text-[#0052dd] flex items-center gap-1">
+                <span className="text-[#0052dd] dark:text-blue-400 flex items-center gap-1">
                   <TrendingUp className="w-3.5 h-3.5" /> +{stats.weekly_growth} this week
                 </span>
               ) : (
@@ -134,89 +151,91 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* High Risk */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white border-t-4 border-t-[#ba1a1a]">
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border-t-4 border-t-[#ba1a1a] dark:border-t-red-500">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">High Risk</h3>
-            <AlertTriangle className="w-5 h-5 text-[#ba1a1a]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">High Risk</h3>
+            <AlertTriangle className="w-5 h-5 text-[#ba1a1a] dark:text-red-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#ba1a1a]">
+            <p className="text-2xl font-bold text-[#ba1a1a] dark:text-red-500">
               {displayHigh}
             </p>
-            <p className="text-xs font-medium text-[#424656] mt-1 truncate">
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               Require immediate attention
             </p>
           </div>
         </div>
 
         {/* Medium Risk */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white border-t-4 border-t-[#e69c00]">
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border-t-4 border-t-[#e69c00] dark:border-t-orange-500">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">Medium Risk</h3>
-            <Info className="w-5 h-5 text-[#e69c00]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">Medium Risk</h3>
+            <Info className="w-5 h-5 text-[#e69c00] dark:text-orange-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#191c1f]">
+            <p className="text-2xl font-bold text-[#191c1f] dark:text-white">
               {displayMedium}
             </p>
-            <p className="text-xs font-medium text-[#424656] mt-1 truncate">
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               Monitor next session
             </p>
           </div>
         </div>
 
         {/* Low Risk */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white border-t-4 border-t-[#198754]">
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border-t-4 border-t-[#198754] dark:border-t-green-500">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">Low Risk</h3>
-            <CheckCircle2 className="w-5 h-5 text-[#198754]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">Low Risk</h3>
+            <CheckCircle2 className="w-5 h-5 text-[#198754] dark:text-green-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#191c1f]">
+            <p className="text-2xl font-bold text-[#191c1f] dark:text-white">
               {displayLow.toLocaleString()}
             </p>
-            <p className="text-xs font-medium text-[#424656] mt-1 truncate">
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               Optimal condition
             </p>
           </div>
         </div>
 
         {/* Pending Reviews */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white">
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">Pending Reviews</h3>
-            <Clock className="w-5 h-5 text-[#585f66]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">Pending Reviews</h3>
+            <Clock className="w-5 h-5 text-[#585f66] dark:text-slate-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#191c1f]">{pendingReviews}</p>
-            <p className="text-xs font-medium text-[#424656] mt-1 truncate">
+            <p className="text-2xl font-bold text-[#191c1f] dark:text-white">{pendingReviews}</p>
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               Analyses processing
             </p>
           </div>
         </div>
 
         {/* Today's Uploads */}
-        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white">
+        <div className="card-level-1 rounded-xl p-4 flex flex-col justify-between h-32 bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800">
           <div className="flex justify-between items-start">
-            <h3 className="text-xs font-semibold text-[#424656]">Today's Uploads</h3>
-            <UploadCloud className="w-5 h-5 text-[#304db9]" />
+            <h3 className="text-xs font-semibold text-[#424656] dark:text-slate-400">Today's Uploads</h3>
+            <UploadCloud className="w-5 h-5 text-[#304db9] dark:text-indigo-400" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#191c1f]">{todayUploads}</p>
-            <p className="text-xs font-medium text-[#424656] mt-1 truncate">
+            <p className="text-2xl font-bold text-[#191c1f] dark:text-white">{todayUploads}</p>
+            <p className="text-xs font-medium text-[#424656] dark:text-slate-400 mt-1 truncate">
               Videos uploaded
             </p>
           </div>
         </div>
+          </>
+        )}
       </section>
 
       {/* Main Data Layout: Risk Distribution & Recent Activity */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Risk Distribution Card */}
-        <div className="card-level-1 rounded-xl p-6 lg:col-span-1 flex flex-col items-center bg-white">
+        <div className="card-level-1 rounded-xl p-6 lg:col-span-1 flex flex-col items-center bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800">
           <div className="w-full mb-4">
-            <h2 className="text-lg font-bold text-[#191c1f]">Risk Distribution</h2>
-            <p className="text-xs text-[#424656]">Current active roster status</p>
+            <h2 className="text-lg font-bold text-[#191c1f] dark:text-white">Risk Distribution</h2>
+            <p className="text-xs text-[#424656] dark:text-slate-400">Current active roster status</p>
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center w-full min-h-[220px]">
@@ -244,54 +263,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               
               {/* Donut Center Display */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                <span className="text-2xl font-extrabold text-[#191c1f]">
+                <span className="text-2xl font-extrabold text-[#191c1f] dark:text-white">
                   {highRiskPct}%
                 </span>
-                <span className="text-[11px] font-medium text-[#424656]">
+                <span className="text-[11px] font-medium text-[#424656] dark:text-slate-400">
                   High Risk Rate
                 </span>
               </div>
             </div>
 
             {/* Legend Breakdown */}
-            <div className="w-full space-y-2.5 mt-4 pt-4 border-t border-[#c3c6d8]">
+            <div className="w-full space-y-2.5 mt-4 pt-4 border-t border-[#c3c6d8] dark:border-slate-800">
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-[#ba1a1a]"></span>
-                  <span className="font-medium text-[#191c1f]">High Risk</span>
+                  <span className="w-3 h-3 rounded-full bg-[#ba1a1a] dark:bg-red-500"></span>
+                  <span className="font-medium text-[#191c1f] dark:text-slate-300">High Risk</span>
                 </div>
-                <span className="text-[#424656]">{displayHigh} ({highRiskPct}%)</span>
+                <span className="text-[#424656] dark:text-slate-400">{displayHigh} ({highRiskPct}%)</span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-[#e69c00]"></span>
-                  <span className="font-medium text-[#191c1f]">Medium Risk</span>
+                  <span className="w-3 h-3 rounded-full bg-[#e69c00] dark:bg-orange-500"></span>
+                  <span className="font-medium text-[#191c1f] dark:text-slate-300">Medium Risk</span>
                 </div>
-                <span className="text-[#424656]">{displayMedium} ({mediumRiskPct}%)</span>
+                <span className="text-[#424656] dark:text-slate-400">{displayMedium} ({mediumRiskPct}%)</span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-[#198754]"></span>
-                  <span className="font-medium text-[#191c1f]">Low Risk</span>
+                  <span className="w-3 h-3 rounded-full bg-[#198754] dark:bg-green-500"></span>
+                  <span className="font-medium text-[#191c1f] dark:text-slate-300">Low Risk</span>
                 </div>
-                <span className="text-[#424656]">{displayLow.toLocaleString()} ({lowRiskPct}%)</span>
+                <span className="text-[#424656] dark:text-slate-400">{displayLow.toLocaleString()} ({lowRiskPct}%)</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Recent Activity Feed */}
-        <div className="card-level-1 rounded-xl p-6 lg:col-span-2 flex flex-col bg-white">
+        <div className="card-level-1 rounded-xl p-6 lg:col-span-2 flex flex-col bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800">
           <div className="w-full mb-4 flex justify-between items-end">
             <div>
-              <h2 className="text-lg font-bold text-[#191c1f]">Recent Activity</h2>
-              <p className="text-xs text-[#424656]">Latest biomechanics analyses</p>
+              <h2 className="text-lg font-bold text-[#191c1f] dark:text-white">Recent Activity</h2>
+              <p className="text-xs text-[#424656] dark:text-slate-400">Latest biomechanics analyses</p>
             </div>
             <button 
               onClick={() => setActiveTab('athletes')}
-              className="text-xs font-semibold text-[#004ccd] hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-[#004ccd] dark:text-blue-400 hover:underline flex items-center gap-1"
             >
               View All <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -316,10 +335,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onSelectAthlete(matchedAthlete);
                     }
                   }}
-                  className="p-4 rounded-lg border border-[#c3c6d8] hover:bg-[#f2f4f8] transition-colors flex items-center justify-between gap-4 cursor-pointer group"
+                  className="p-4 rounded-lg border border-[#c3c6d8] dark:border-slate-800 hover:bg-[#f2f4f8] dark:hover:bg-slate-800 transition-colors flex items-center justify-between gap-4 cursor-pointer group"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-[#f2f4f8] border border-[#c3c6d8] overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-[#f2f4f8] dark:bg-slate-800 border border-[#c3c6d8] dark:border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                       {session.avatarUrl || matchedAthlete?.profile_picture_url ? (
                         <img 
                           src={session.avatarUrl || matchedAthlete?.profile_picture_url} 
@@ -331,11 +350,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       )}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-semibold text-[#191c1f] group-hover:text-[#004ccd] transition-colors truncate">
+                      <h4 className="text-sm font-semibold text-[#191c1f] dark:text-slate-200 group-hover:text-[#004ccd] dark:group-hover:text-blue-400 transition-colors truncate">
                         {session.athleteName}
                       </h4>
-                      <p className="text-xs text-[#424656] truncate">
-                        <span className="font-medium text-[#191c1f]">{session.movementType}</span> • {session.summary}
+                      <p className="text-xs text-[#424656] dark:text-slate-400 truncate">
+                        <span className="font-medium text-[#191c1f] dark:text-slate-300">{session.movementType}</span> • {session.summary}
                       </p>
                     </div>
                   </div>
@@ -344,15 +363,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span 
                       className={`px-2.5 py-0.5 rounded text-[11px] font-semibold ${
                         isHigh
-                          ? 'bg-[#ffdad6] text-[#93000a]'
+                          ? 'bg-[#ffdad6] dark:bg-red-900/30 text-[#93000a] dark:text-red-400'
                           : isMedium
-                          ? 'bg-[#ffe4c2] text-[#856404]'
-                          : 'bg-[#c4f2c7] text-[#0f5132]'
+                          ? 'bg-[#ffe4c2] dark:bg-orange-900/30 text-[#856404] dark:text-orange-400'
+                          : 'bg-[#c4f2c7] dark:bg-green-900/30 text-[#0f5132] dark:text-green-400'
                       }`}
                     >
                       {session.riskLevel}
                     </span>
-                    <span className="text-[11px] text-[#424656]">
+                    <span className="text-[11px] text-[#424656] dark:text-slate-500">
                       {session.timestamp || 'Just now'}
                     </span>
                   </div>
@@ -360,11 +379,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               );
             })}
 
-            {filteredSessions.length === 0 && (
-              <div className="p-8 text-center text-[#737687] text-sm">
+            {isLoading ? (
+              Array(4).fill(0).map((_, i) => (
+                <div key={i} className="p-4 rounded-lg border border-[#c3c6d8] dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0 w-full">
+                    <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse shrink-0"></div>
+                    <div className="min-w-0 w-full space-y-2">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 animate-pulse"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-2/3 animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : filteredSessions.length === 0 ? (
+              <div className="p-8 text-center text-[#737687] dark:text-slate-500 text-sm">
                 No recent activity matching your search.
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </section>

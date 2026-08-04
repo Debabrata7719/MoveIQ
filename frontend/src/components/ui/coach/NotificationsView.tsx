@@ -8,6 +8,7 @@ import {
   Check,
   X
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface NotificationsViewProps {
   invites: any[];
@@ -175,7 +176,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
             <div className="bg-[#f2f4f8] p-3 text-center border-t border-[#c3c6d8]">
               <button 
-                onClick={() => alert("All logs up to date.")}
+                onClick={() => toast.success("All logs up to date.")}
                 className="text-xs font-semibold text-[#004ccd] hover:underline"
               >
                 View All Logs

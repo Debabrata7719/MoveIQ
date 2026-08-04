@@ -18,6 +18,7 @@ import { OpsPortal } from "@/components/ui/ops/OpsPortal";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { useState, useEffect } from "react";
 import { Loader2, Award, Users, Search, Send, ArrowLeft } from "lucide-react";
+import toast from 'react-hot-toast';
 
 export default function Home() {
   const [hasData, setHasData] = useState(false);
@@ -45,11 +46,13 @@ export default function Home() {
   const [isSearchingCoaches, setIsSearchingCoaches] = useState(false);
   // Athlete Sessions History
   const [sessions, setSessions] = useState<any[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [activeRecSession, setActiveRecSession] = useState<any>(null);
   const [activeExercise, setActiveExercise] = useState<any>(null);
   const [activeReportSession, setActiveReportSession] = useState<any>(null);
 
   const fetchSessionsHistory = async (authToken: string) => {
+    setIsLoadingSessions(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/history`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
@@ -63,6 +66,8 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Failed to fetch sessions history", e);
+    } finally {
+      setIsLoadingSessions(false);
     }
   };
   useEffect(() => {
@@ -232,7 +237,7 @@ export default function Home() {
     const urlError = params.get("error");
 
     if (urlError) {
-      alert(`Google Authentication Failed: ${urlError}`);
+      toast.error(`Google Authentication Failed: ${urlError}`);
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (urlToken && urlUser) {
       try {
@@ -411,7 +416,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
         throw new Error(data.detail || 'Failed to delete session');
       }
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -431,7 +436,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
         fetchCoachStatus(token || '');
       } else {
         const data = await res.json();
-        alert(data.detail || "Failed to send request");
+        toast.error(data.detail || "Failed to send request");
       }
     } catch (e) {
       console.error(e);
@@ -556,7 +561,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
 
         {/* ── Athlete Dashboard Render ── */}
         {activeView === 'dashboard' && activeDashboard === 'athlete' && (
-          <div className="w-full min-h-screen p-8 bg-[#faf8ff] text-[#191c1f]">
+          <div className="w-full min-h-screen p-8 bg-[#faf8ff] dark:bg-slate-950 text-[#191c1f] dark:text-slate-100 transition-colors">
             {hasData && dashboardData ? (
               <div className="space-y-4">
                 <button
@@ -564,7 +569,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
                     setDashboardData(null);
                     setHasData(false);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#c3c6d8] rounded-xl font-bold text-xs text-[#004ccd] hover:bg-[#f2f4f6] transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-xl font-bold text-xs text-[#004ccd] dark:text-blue-400 hover:bg-[#f2f4f6] dark:hover:bg-slate-800 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back to Dashboard Overview
                 </button>
@@ -590,8 +595,8 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
             ) : (
               <div className="grid grid-cols-1 gap-8">
                 {/* Uploader Card */}
-                <div className="bg-white border border-[#c3c6d8] rounded-2xl p-6 shadow-sm">
-                  <h3 className="text-sm font-extrabold text-[#191c1f] uppercase tracking-wider mb-4">Analyze Movement Video</h3>
+                <div className="bg-white dark:bg-slate-900 border border-[#c3c6d8] dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+                  <h3 className="text-sm font-extrabold text-[#191c1f] dark:text-white uppercase tracking-wider mb-4">Analyze Movement Video</h3>
                   <FileUploader 
                       token={token || undefined} 
                       onUploadStart={() => setIsProcessing(true)}
@@ -606,6 +611,7 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
                 <AthleteDashboardView 
                   athlete={user}
                   sessions={sessions}
+                  isLoading={isLoadingSessions}
                   onSelectTab={(tab) => {
                     if (tab === 'analysis_history') setActiveView('analysis_history');
                     else if (tab === 'recommendations_history') setActiveView('recommendations_history');

@@ -29,6 +29,7 @@ interface AthletesViewProps {
   onDownloadPDF?: (session: any, profile: any) => void;
   onGenerateRecommendations?: (sessionId: string, videoName: string, athleteId?: string) => Promise<void>;
   generatingRecId?: string | null;
+  isLoading?: boolean;
 }
 
 export const AthletesView: React.FC<AthletesViewProps> = ({
@@ -40,7 +41,8 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
   setSearchQuery,
   onDownloadPDF,
   onGenerateRecommendations,
-  generatingRecId
+  generatingRecId,
+  isLoading
 }) => {
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<'All' | 'High Risk' | 'Medium Risk' | 'Low Risk'>('All');
   
@@ -131,10 +133,10 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-[#191c1f] tracking-tight">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-[#191c1f] dark:text-white tracking-tight">
               Athletes Roster
             </h2>
-            <p className="text-xs text-[#424656] mt-1 font-semibold">
+            <p className="text-xs text-[#424656] dark:text-slate-400 mt-1 font-semibold">
               Manage your assigned athletes, inspect profiles, and view full historical biomechanics.
             </p>
           </div>
@@ -157,7 +159,7 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search Athletes by Name, Sport, positions..."
-              className="w-full pl-10 pr-4 py-2 border border-[#c3c6d8] rounded-lg bg-white text-[#191c1f] focus:outline-none focus:border-[#004ccd] text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-[#c3c6d8] dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 text-[#191c1f] dark:text-slate-200 focus:outline-none focus:border-[#004ccd] dark:focus:border-blue-400 text-sm"
             />
           </div>
 
@@ -172,7 +174,7 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                   className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors border ${
                     isActive
                       ? 'bg-[#004ccd] text-white border-transparent shadow-xs'
-                      : 'bg-white text-[#191c1f] border-[#c3c6d8] hover:bg-[#f2f4f8]'
+                      : 'bg-white dark:bg-slate-900 text-[#191c1f] dark:text-slate-300 border-[#c3c6d8] dark:border-slate-700 hover:bg-[#f2f4f8] dark:hover:bg-slate-800'
                   }`}
                 >
                   {risk}
@@ -185,6 +187,21 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
 
       {/* Expandable Athletes List Section */}
       <div className="space-y-4">
+        {isLoading ? (
+          Array(3).fill(0).map((_, i) => (
+            <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-[#c3c6d8] dark:border-slate-800 p-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse"></div>
+                <div className="space-y-2">
+                  <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                  <div className="w-24 h-3 bg-slate-200 dark:bg-slate-800 rounded animate-pulse"></div>
+                </div>
+              </div>
+              <div className="w-20 h-6 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse"></div>
+            </div>
+          ))
+        ) : (
+          <>
         {filteredAthletes.map((athlete) => {
           const fullName = athlete.full_name || `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'Athlete';
           const athleteRisk = athlete.riskLevel || (
@@ -216,14 +233,14 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
           return (
             <div
               key={athlete.id}
-              className={`bg-white rounded-xl border border-[#c3c6d8] shadow-xs overflow-hidden transition-all duration-200 ${
-                isExpanded ? 'ring-1 ring-[#004ccd] shadow-sm' : 'hover:shadow-md'
+              className={`bg-white dark:bg-slate-900 rounded-xl border border-[#c3c6d8] dark:border-slate-800 shadow-xs overflow-hidden transition-all duration-200 ${
+                isExpanded ? 'ring-1 ring-[#004ccd] dark:ring-blue-400 shadow-sm' : 'hover:shadow-md'
               }`}
             >
               {/* Expandable Row Header */}
               <div 
                 onClick={() => handleToggleExpand(athlete.id)}
-                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-[#faf8ff] transition-colors relative"
+                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-[#faf8ff] dark:hover:bg-slate-800/50 transition-colors relative"
               >
                 {/* Risk Indicator Line */}
                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${indicatorColor}`} />
@@ -242,10 +259,10 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                     )}
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#191c1f] text-base leading-tight">
+                    <h3 className="font-extrabold text-[#191c1f] dark:text-white text-base leading-tight">
                       {fullName}
                     </h3>
-                    <p className="text-[11px] font-semibold text-[#737687] mt-0.5">
+                    <p className="text-[11px] font-semibold text-[#737687] dark:text-slate-400 mt-0.5">
                       {athlete.email} • {athlete.sport || athlete.profile?.sport || 'Soccer'}
                     </p>
                   </div>
@@ -260,8 +277,8 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                     {athleteRisk}
                   </div>
 
-                  <div className="text-xs font-semibold text-[#424656]">
-                    Strain Load: <span className={`font-bold ${isHigh ? 'text-[#ba1a1a]' : isMedium ? 'text-[#b97b00]' : 'text-[#11801c]'}`}>{athlete.strainLoad ?? athlete.latest_score ?? 28}%</span>
+                  <div className="text-xs font-semibold text-[#424656] dark:text-slate-400">
+                    Strain Load: <span className={`font-bold ${isHigh ? 'text-[#ba1a1a] dark:text-red-400' : isMedium ? 'text-[#b97b00] dark:text-orange-400' : 'text-[#11801c] dark:text-green-500'}`}>{athlete.strainLoad ?? athlete.latest_score ?? 28}%</span>
                   </div>
                 </div>
 
@@ -272,7 +289,7 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                       e.stopPropagation();
                       onSelectAthlete(athlete);
                     }}
-                    className="px-3.5 py-1.5 bg-[#f2f4f8] hover:bg-[#e0e2e6] text-[#004ccd] text-xs font-bold rounded-lg border border-[#c3c6d8] transition-colors"
+                    className="px-3.5 py-1.5 bg-[#f2f4f8] dark:bg-slate-800 hover:bg-[#e0e2e6] dark:hover:bg-slate-700 text-[#004ccd] dark:text-blue-400 text-xs font-bold rounded-lg border border-[#c3c6d8] dark:border-slate-700 transition-colors"
                   >
                     Open Profile
                   </button>
@@ -296,56 +313,56 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
 
               {/* Collapsible Details Drawer */}
               {isExpanded && (
-                <div className="border-t border-[#c3c6d8] bg-[#fcfcff] p-6 space-y-6">
+                <div className="border-t border-[#c3c6d8] dark:border-slate-800 bg-[#fcfcff] dark:bg-slate-900/50 p-6 space-y-6">
                   {loadingHistory ? (
                     <div className="flex flex-col items-center justify-center py-10 gap-2">
-                      <Loader2 className="w-6 h-6 text-[#004ccd] animate-spin" />
-                      <span className="text-xs font-semibold text-[#424656]">Loading athlete record...</span>
+                      <Loader2 className="w-6 h-6 text-[#004ccd] dark:text-blue-400 animate-spin" />
+                      <span className="text-xs font-semibold text-[#424656] dark:text-slate-400">Loading athlete record...</span>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       
                       {/* Athlete Profile Summary */}
-                      <div className="bg-white rounded-xl border border-[#c3c6d8] p-5 space-y-4">
-                        <div className="flex items-center gap-2 pb-2 border-b border-[#c3c6d8]/50">
-                          <User className="w-4.5 h-4.5 text-[#004ccd]" />
-                          <h4 className="font-extrabold text-sm text-[#191c1f]">Profile Specifications</h4>
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#c3c6d8] dark:border-slate-800 p-5 space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-[#c3c6d8]/50 dark:border-slate-700/50">
+                          <User className="w-4.5 h-4.5 text-[#004ccd] dark:text-blue-400" />
+                          <h4 className="font-extrabold text-sm text-[#191c1f] dark:text-white">Profile Specifications</h4>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Age</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block">{historyData?.profile?.age || athlete.profile?.age || 'N/A'} yrs</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Age</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block">{historyData?.profile?.age || athlete.profile?.age || 'N/A'} yrs</span>
                           </div>
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Gender</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block capitalize">{historyData?.profile?.gender || athlete.profile?.gender || 'N/A'}</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Gender</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block capitalize">{historyData?.profile?.gender || athlete.profile?.gender || 'N/A'}</span>
                           </div>
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Height</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block">{historyData?.profile?.height || athlete.profile?.height || 'N/A'} cm</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Height</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block">{historyData?.profile?.height || athlete.profile?.height || 'N/A'} cm</span>
                           </div>
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Weight</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block">{historyData?.profile?.weight || athlete.profile?.weight || 'N/A'} kg</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Weight</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block">{historyData?.profile?.weight || athlete.profile?.weight || 'N/A'} kg</span>
                           </div>
                           <div className="col-span-2">
-                            <span className="text-[#737687] block uppercase text-[10px]">Training Load Intensity</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block capitalize">{historyData?.profile?.training_intensity || athlete.profile?.training_intensity || 'Medium'}</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Training Load Intensity</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block capitalize">{historyData?.profile?.training_intensity || athlete.profile?.training_intensity || 'Medium'}</span>
                           </div>
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Weekly Workouts</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block">{historyData?.profile?.weekly_training_sessions || athlete.profile?.weekly_training_sessions || 'N/A'} sessions</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Weekly Workouts</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block">{historyData?.profile?.weekly_training_sessions || athlete.profile?.weekly_training_sessions || 'N/A'} sessions</span>
                           </div>
                           <div>
-                            <span className="text-[#737687] block uppercase text-[10px]">Primary Sport</span>
-                            <span className="text-[#191c1f] text-sm mt-0.5 block capitalize">{historyData?.profile?.sport || athlete.profile?.sport || 'Soccer'}</span>
+                            <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px]">Primary Sport</span>
+                            <span className="text-[#191c1f] dark:text-slate-200 text-sm mt-0.5 block capitalize">{historyData?.profile?.sport || athlete.profile?.sport || 'Soccer'}</span>
                           </div>
                         </div>
 
                         {/* Injury details */}
-                        <div className="mt-4 pt-4 border-t border-[#c3c6d8]/50 space-y-2">
-                          <span className="text-[#737687] block uppercase text-[10px] font-bold">Injury Status Report</span>
+                        <div className="mt-4 pt-4 border-t border-[#c3c6d8]/50 dark:border-slate-700/50 space-y-2">
+                          <span className="text-[#737687] dark:text-slate-400 block uppercase text-[10px] font-bold">Injury Status Report</span>
                           <div className={`p-3 rounded-lg border text-xs font-semibold ${
                             (historyData?.profile?.has_previous_injury || athlete.profile?.has_previous_injury) === 'Yes'
                               ? 'bg-amber-50 border-amber-200 text-amber-800'
@@ -365,10 +382,10 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                       </div>
 
                       {/* Analysis History Timeline */}
-                      <div className="bg-white rounded-xl border border-[#c3c6d8] p-5 lg:col-span-2 space-y-4">
-                        <div className="flex items-center gap-2 pb-2 border-b border-[#c3c6d8]/50">
-                          <Activity className="w-4.5 h-4.5 text-[#004ccd]" />
-                          <h4 className="font-extrabold text-sm text-[#191c1f]">Historical Assessments & Progress Analytics</h4>
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#c3c6d8] dark:border-slate-800 p-5 lg:col-span-2 space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-[#c3c6d8]/50 dark:border-slate-700/50">
+                          <Activity className="w-4.5 h-4.5 text-[#004ccd] dark:text-blue-400" />
+                          <h4 className="font-extrabold text-sm text-[#191c1f] dark:text-white">Historical Assessments & Progress Analytics</h4>
                         </div>
 
                         {(() => {
@@ -397,19 +414,19 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
                           const latestDiffLabel = chartData[chartData.length - 1]?.diffLabel ?? 'Baseline';
 
                           return (
-                            <div className="bg-[#f8fafc] rounded-xl border border-[#c3c6d8]/70 p-4 mb-4 space-y-3">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#c3c6d8]/50">
+                            <div className="bg-[#f8fafc] dark:bg-slate-800/50 rounded-xl border border-[#c3c6d8]/70 dark:border-slate-700/70 p-4 mb-4 space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#c3c6d8]/50 dark:border-slate-700/50">
                                 <div className="flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4 text-[#004ccd]" />
-                                  <h5 className="font-extrabold text-xs text-[#191c1f] uppercase tracking-wider">Session-over-Session Analytics Progress</h5>
+                                  <TrendingUp className="w-4 h-4 text-[#004ccd] dark:text-blue-400" />
+                                  <h5 className="font-extrabold text-xs text-[#191c1f] dark:text-slate-200 uppercase tracking-wider">Session-over-Session Analytics Progress</h5>
                                 </div>
                                 {chartData.length > 1 && (
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold text-[#424656]">Latest vs Prev Session:</span>
+                                    <span className="text-[11px] font-bold text-[#424656] dark:text-slate-400">Latest vs Prev Session:</span>
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
-                                      latestDiff > 0 ? 'bg-[#c4f2c7] text-[#11801c]' :
-                                      latestDiff < 0 ? 'bg-[#ffdad6] text-[#ba1a1a]' :
-                                      'bg-[#e0e2e6] text-[#424656]'
+                                      latestDiff > 0 ? 'bg-[#c4f2c7] dark:bg-green-900/30 text-[#11801c] dark:text-green-400' :
+                                      latestDiff < 0 ? 'bg-[#ffdad6] dark:bg-red-900/30 text-[#ba1a1a] dark:text-red-400' :
+                                      'bg-[#e0e2e6] dark:bg-slate-700 text-[#424656] dark:text-slate-300'
                                     }`}>
                                       {latestDiffLabel}
                                     </span>
@@ -540,9 +557,11 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
             </div>
           );
         })}
+          </>
+        )}
       </div>
 
-      {filteredAthletes.length === 0 && (
+      {!isLoading && filteredAthletes.length === 0 && (
         <div className="bg-white rounded-xl border border-[#c3c6d8] p-12 text-center max-w-md mx-auto space-y-3">
           <p className="text-base font-semibold text-[#191c1f]">No athletes found</p>
           <p className="text-xs text-[#424656]">
