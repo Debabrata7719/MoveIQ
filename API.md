@@ -1,234 +1,191 @@
-# Sports Injury Risk Detection (MoveIQ) — API Reference
+# API Reference
 
-This document provides a comprehensive specification of the RESTful API built with **FastAPI** to connect the web frontend with the core Python computer vision, biomechanics, and AI recommendation engines.
+This document outlines the core RESTful API endpoints available in the MoveIQ backend.
+
+## Base URL
+All endpoints are relative to the following base URL during local development:
+`http://localhost:8000/api`
+
+## Authentication
+Most API endpoints require authentication via JSON Web Tokens (JWT). 
+When making a request to a protected endpoint, you must include the token in the `Authorization` header as a Bearer token.
+
+**Format:**
+```
+Authorization: Bearer <your_jwt_token>
+```
 
 ---
 
-## 🚀 Server Launch & Interactive Documentation
+## Endpoints
 
-Start the API server locally using Uvicorn:
+### 1. User Registration
+Register a new coach or athlete account.
+
+**Method & Path:** 
+`POST /auth/register`
+
+**Description:** 
+Creates a new user and returns a JWT access token.
+
+**Request Body:** (JSON)
+```json
+{
+  "email": "user@example.com",
+  "password": "securepassword123",
+  "full_name": "John Doe",
+  "role": "athlete" // or "coach"
+}
+```
+
+**Example Request:**
 ```bash
-uvicorn api.server:app --reload --port 8000
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password123", "full_name": "John Doe", "role": "athlete"}'
 ```
 
-Once running, interactive Swagger API documentation with live testing capabilities is available at:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc UI**: `http://localhost:8000/redoc`
-
----
-
-## 🔒 Authentication & Security Architecture
-
-All protected endpoints require a valid **JSON Web Token (JWT)** passed in the HTTP Authorization header:
-```http
-Authorization: Bearer <your_jwt_access_token>
+**Example Response:** (201 Created)
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "token_type": "bearer",
+  "user": {
+    "id": "uuid-1234",
+    "email": "user@example.com",
+    "role": "athlete"
+  }
+}
 ```
 
-### Security & Identity Rules:
-1. **Stateless Identity Extraction**: The backend strictly ignores any `athlete_id` or user identifier passed in request bodies or query strings for authorization. The authenticated user's identity and role are derived mathematically from the verified JWT payload.
-2. **Role-Based Access Control (RBAC)**: The API enforces three primary user roles:
-   - **`athlete`**: Can upload videos, view personal session history, update own profile, and generate personal rehab recommendations.
-   - **`coach`**: Can access assigned athletes' profiles, review session histories, and attach coach feedback notes.
-   - **`ops_admin`**: Granted system-wide access to administrative diagnostics, real-time telemetry, audit logs, and user account management.
+**Status/Error Codes:**
+- `201 Created` - User registered successfully.
+- `400 Bad Request` - Email already registered or invalid data.
 
 ---
 
-## 🔗 Endpoint Groups
+### 2. User Login
+Authenticate a user and retrieve a JWT.
 
-### 1. Authentication & Account Management (`/api/auth`)
-Manages user registration, login, JWT token issuance, and account profile updates using MySQL / Supabase PostgreSQL and `bcrypt` password hashing.
+**Method & Path:** 
+`POST /auth/login`
 
-- **`POST /api/auth/register`**
-  - **Description**: Registers a new user account in the SQL database.
-  - **Request Body**:
-    ```json
-    {
-      "email": "athlete@example.com",
-      "password": "SecurePassword123!",
-      "full_name": "Alex Morgan",
-      "role": "athlete"
-    }
-    ```
-  - **Response**: `201 Created` — `{"message": "User created successfully", "user_id": 1}`
+**Description:** 
+Validates credentials and returns an access token.
 
-- **`POST /api/auth/login`**
-  - **Description**: Authenticates user credentials and issues a JWT access token.
-  - **Request Body**:
-    ```json
-    {
-      "email": "athlete@example.com",
-      "password": "SecurePassword123!"
-    }
-    ```
-  - **Response**: `200 OK` — `{"access_token": "eyJhbGciOi...", "token_type": "bearer", "user": {"id": 1, "email": "...", "role": "athlete"}}`
+**Request Body:** (JSON or Form Data)
+```json
+{
+  "email": "user@example.com",
+  "password": "securepassword123"
+}
+```
 
-- **`GET /api/auth/me`** *(Requires JWT)*
-  - **Description**: Returns the decoded profile information and role of the currently authenticated user.
-  - **Response**: `200 OK` — `{"id": 1, "email": "athlete@example.com", "full_name": "Alex Morgan", "role": "athlete"}`
+**Example Response:** (200 OK)
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "token_type": "bearer"
+}
+```
 
-- **`PUT /api/auth/account`** *(Requires JWT)*
-  - **Description**: Updates the authenticated user's display name and email address.
-  - **Request Body**: `{"full_name": "Alex M. Morgan", "email": "alex.new@example.com"}`
-  - **Response**: `200 OK` — `{"message": "Account updated successfully"}`
-
-- **`PUT /api/auth/password`** *(Requires JWT)*
-  - **Description**: Securely changes the user's password after verifying their current password.
-  - **Request Body**: `{"old_password": "OldPassword123!", "new_password": "NewSecurePassword456!"}`
-  - **Response**: `200 OK` — `{"message": "Password updated successfully"}`
+**Status/Error Codes:**
+- `200 OK` - Login successful.
+- `401 Unauthorized` - Incorrect email or password.
 
 ---
 
-### 2. Athlete Historical Profiles (`/api/profile`)
-Handles reading and upserting athlete historical and demographic data stored in MongoDB. Demographics are critical as they act as baseline multipliers in the Stage 3 Risk Scoring Engine.
+### 3. Upload Video for Analysis
+Upload a video of an athletic movement for AI biomechanical analysis.
 
-- **`GET /api/profile`** *(Requires JWT)*
-  - **Description**: Retrieves the authenticated athlete's demographic and injury history profile from MongoDB (`athlete_profiles` collection).
-  - **Response**: `200 OK`
-    ```json
-    {
-      "athlete_id": "athlete_001",
-      "age": 24,
-      "gender": "Female",
-      "height": 170,
-      "weight": 65,
-      "sport": "Soccer",
-      "has_previous_injury": "Yes",
-      "previous_injury_type": "Ankle Sprain",
-      "injury_recency": "3 months ago",
-      "training_intensity": "High",
-      "weekly_training_sessions": 4
-    }
-    ```
+**Method & Path:** 
+`POST /analyze/upload`
 
-- **`POST /api/profile`** | **`PUT /api/profile`** *(Requires JWT)*
-  - **Description**: Creates or updates the athlete's demographic and training history profile in MongoDB.
-  - **Request Body**: Matches the JSON structure returned in `GET /api/profile`.
-  - **Response**: `200 OK` — `{"message": "Profile updated successfully"}`
+**Description:** 
+Accepts a video file, runs MediaPipe pose extraction, generates a risk assessment, and returns the analysis ID.
 
----
+**Authentication:** 
+Required (Bearer Token)
 
-### 3. Video Sessions & AI Analysis (`/api/sessions`)
-Bridges the web frontend to the core Python computer vision and biomechanical analysis pipeline (`src.main`).
+**Request Body:** (multipart/form-data)
+- `file`: The video file (.mp4, .mov)
+- `movement_type`: (String) e.g., "Squat", "Jump"
 
-- **`POST /api/sessions/upload-and-analyze`** *(Requires JWT)*
-  - **Description**: Accepts a raw video upload, generates a unique UUID session, executes the MediaPipe pose extractor and biomechanical analyzer, stores frame-by-frame data in MongoDB, extracts Base64 key-moment frames, and deletes local temporary files.
-  - **Payload**: `multipart/form-data` with form field `video` containing the MP4/MOV file.
-  - **Response**: `200 OK`
-    ```json
-    {
-      "session_id": "c597-4c20-9be9-380e354b36fb",
-      "video_name": "squat_test",
-      "status": "completed",
-      "video_url": "https://res.cloudinary.com/.../squat_test.mp4",
-      "risk_data": {
-        "overall_health_score": 78.5,
-        "risk_category": "Low Risk",
-        "flagged_issues": "Minor asymmetry in ankle dorsiflexion"
-      }
-    }
-    ```
+**Example Request:**
+```bash
+curl -X POST http://localhost:8000/api/analyze/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/video.mp4" \
+  -F "movement_type=Squat"
+```
 
-- **`GET /api/sessions/history`** *(Requires JWT)*
-  - **Description**: Fetches all historical analysis sessions associated with the authenticated user (sorted newest to oldest).
-  - **Response**: `200 OK` — Array of session summary objects.
+**Example Response:** (200 OK)
+```json
+{
+  "session_id": "session-uuid-5678",
+  "status": "processing",
+  "message": "Video uploaded successfully and analysis has started."
+}
+```
 
-- **`GET /api/sessions/{session_id}`** *(Requires JWT)*
-  - **Description**: Retrieves full metadata, joint angle charts, and key-moment frames for a specific analysis session. Enforces strict ownership checks unless requested by an authorized coach or admin.
-  - **Response**: `200 OK` — Full session document including `biomechanics` and `risk_scores` sub-objects.
+**Status/Error Codes:**
+- `200 OK` - Upload successful.
+- `401 Unauthorized` - Missing or invalid token.
+- `403 Forbidden` - User requires a Pro subscription to upload more videos.
+- `415 Unsupported Media Type` - Invalid file format.
 
 ---
 
-### 4. AI Recommendation Engine (`/api/recommendations`)
-Integrates with LangGraph and Groq LLMs to generate personalized rehabilitation and training programs based on detected biomechanical flaws.
+### 4. Stripe Webhook
+Receive asynchronous events from Stripe regarding subscription status.
 
-- **`POST /api/recommendations/{session_id}/generate`** *(Requires JWT)*
-  - **Description**: Triggers `src.recommendations.engine` to analyze the session's risk score and flagged issues, formulating a structured exercise plan and plain-English diagnostic summary.
-  - **Response**: `200 OK` — `{"message": "Recommendations generated successfully", "summary": "..."}`
+**Method & Path:** 
+`POST /webhooks/stripe`
 
-- **`GET /api/recommendations/{session_id}`** *(Requires JWT)*
-  - **Description**: Retrieves the structured recommendation report from MongoDB (`recommendations` collection).
-  - **Response**: `200 OK`
-    ```json
-    {
-      "session_id": "c597-4c20-9be9-380e354b36fb",
-      "structured_summary": {
-        "one_line_summary": "Overall good squat mechanics with mild right knee inward collapse during ascent.",
-        "key_findings": ["Knee valgus angle reached 14° on right leg", "Good hip flexion depth maintained"],
-        "action_plan": "Focus on glute medius strengthening and neuromuscular knee alignment cues."
-      },
-      "recommended_exercises": {
-        "Knee Stability": [
-          {"name": "Banded Clamshells", "sets": "3 sets of 15 reps", "notes": "Keep feet together and control descent"}
-        ],
-        "Hip Mobility": [
-          {"name": "90/90 Hip Stretch", "sets": "2 sets of 60s per side", "notes": "Maintain upright torso"}
-        ]
-      }
-    }
-    ```
+**Description:** 
+Listens for the `checkout.session.completed` event to upgrade a user's account to Pro.
 
----
+**Authentication:** 
+None (Validates using Stripe Signature Header)
 
-### 5. Operations & Admin Telemetry (`/api/ops`)
-Protected endpoints reserved for users with the `ops_admin` role. Power the real-time Operations Portal dashboard.
+**Request Body:** (Raw JSON payload from Stripe)
 
-- **`GET /api/ops/diagnostics`** *(Requires `ops_admin` role)*
-  - **Description**: Returns live system telemetry, health checks, and connection latency for MongoDB, MySQL, and cloud storage.
-  - **Response**: `200 OK`
-    ```json
-    {
-      "status": "healthy",
-      "timestamp": "2026-07-26T16:30:00Z",
-      "databases": {
-        "mongodb": {"status": "connected", "latency_ms": 14.2, "db_name": "sports_injury_db"},
-        "mysql": {"status": "connected", "latency_ms": 5.8}
-      },
-      "system": {
-        "cpu_usage_pct": 12.4,
-        "memory_usage_pct": 45.1,
-        "disk_free_gb": 112.5
-      }
-    }
-    ```
+**Example Request:**
+(Sent automatically by Stripe)
 
-- **`GET /api/ops/analytics`** *(Requires `ops_admin` role)*
-  - **Description**: Aggregates system-wide usage metrics, total sessions processed, risk category distributions, and athlete demographic summaries.
-  - **Response**: `200 OK` — Aggregated analytics statistics for chart rendering.
+**Example Response:** (200 OK)
+```json
+{
+  "status": "success",
+  "message": "Webhook processed successfully"
+}
+```
 
-- **`GET /api/ops/audit-logs`** *(Requires `ops_admin` role)*
-  - **Description**: Retrieves chronological security and system audit logs (logins, role changes, error spikes, pipeline failures).
-  - **Query Parameters**: `?limit=50&offset=0`
-  - **Response**: `200 OK` — Array of audit log entry objects.
-
-- **`GET /api/ops/users`** | **`PUT /api/ops/users/{user_id}/role`** *(Requires `ops_admin` role)*
-  - **Description**: Allows administrators to inspect registered accounts and modify user roles (e.g., promoting an athlete to coach or admin).
-  - **Request Body (PUT)**: `{"role": "coach"}`
-  - **Response**: `200 OK` — `{"message": "User role updated successfully"}`
+**Status/Error Codes:**
+- `200 OK` - Event received and processed.
+- `400 Bad Request` - Invalid signature or unhandled event type.
 
 ---
 
-### 6. Coach & Athlete Monitoring (`/api/coach`)
-Allows coaches to monitor assigned athletes and attach professional feedback.
+## Error Handling
 
-- **`GET /api/coach/athletes`** *(Requires `coach` or `ops_admin` role)*
-  - **Description**: Retrieves a list of all athletes assigned to the authenticated coach.
-  - **Response**: `200 OK` — Array of athlete profile summaries.
+The API uses standard HTTP status codes to indicate the success or failure of a request. When an error occurs, the API will typically return a JSON object containing a `detail` message explaining the error.
 
-- **`POST /api/coach/sessions/{session_id}/notes`** *(Requires `coach` role)*
-  - **Description**: Attaches coach feedback notes or customized rehab modifications to an athlete's session analysis.
-  - **Request Body**: `{"coach_notes": "Great improvement on squat depth! Continue focusing on keeping knees tracking over toes."}`
-  - **Response**: `200 OK` — `{"message": "Coach notes saved successfully"}`
+### Common Error Codes
 
----
+| Code | Meaning | Description |
+| :--- | :--- | :--- |
+| **400** | Bad Request | The request was malformed, missing required parameters, or failed validation. |
+| **401** | Unauthorized | Authentication failed or a valid JWT token was not provided in the `Authorization` header. |
+| **403** | Forbidden | The authenticated user does not have permission to perform this action (e.g., an Athlete trying to access Coach data, or hitting a paywall limit). |
+| **404** | Not Found | The requested resource (user, session, analysis) could not be found. |
+| **415** | Unsupported Media Type | The uploaded file type is not supported. |
+| **422** | Unprocessable Entity | The request body failed Pydantic validation (e.g., passing a string where an integer is expected). |
+| **500** | Internal Server Error | An unexpected error occurred on the server (e.g., database failure or AI processing failure). |
 
-### 7. Cloudinary Media Management (`/api/cloudinary`)
-Handles direct media interactions and signature generation for frontend CDN optimization.
-
-- **`DELETE /api/cloudinary/video/{public_id}`** *(Requires JWT)*
-  - **Description**: Deletes a hosted video asset from Cloudinary storage upon session deletion.
-  - **Response**: `200 OK` — `{"message": "Media deleted successfully"}`
-
----
-
-## 📄 Client-Side PDF Generation Note
-To maximize server performance and maintain stateless backend execution, the API no longer compiles PDF documents on the server. Instead, the backend serves structured JSON data from `/api/recommendations/{session_id}`. The Next.js frontend uses React components styled as A4 reports, capturing them into high-resolution canvases via `html-to-image` and generating downloadable PDFs natively in the user's browser using `jsPDF`.
+**Example Error Response:**
+```json
+{
+  "detail": "Invalid credentials provided."
+}
+```
