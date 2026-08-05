@@ -1,7 +1,7 @@
 from celery import Celery
 import os
 from dotenv import load_dotenv
-from api.utils.redis_utils import get_redis_url
+from database.redis_utils import get_redis_url
 from celery.schedules import crontab
 
 load_dotenv()
@@ -28,8 +28,8 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-    timezone="Asia/Kolkata",
-    enable_utc=False,
+    timezone="UTC",
+    enable_utc=True,
     broker_connection_retry_on_startup=True,
 )
 
@@ -51,18 +51,18 @@ celery_app.conf.task_routes = {
     'src.worker.search_tasks.*': {'queue': 'default'},
 }
 
-# Configure Celery Beat schedule
+# Configure Celery Beat schedule (Times are in UTC)
 celery_app.conf.beat_schedule = {
     'weekly-progress-report-monday-8am': {
         'task': 'src.worker.scheduled_tasks.weekly_progress_report_task',
-        'schedule': crontab(hour=8, minute=0, day_of_week=1), # Every Monday at 8 AM
+        'schedule': crontab(hour=2, minute=30, day_of_week=1), # 8 AM IST = 2:30 AM UTC
     },
     'daily-reassessment-reminder-10am': {
         'task': 'src.worker.scheduled_tasks.reassessment_reminder_task',
-        'schedule': crontab(hour=10, minute=0), # Every day at 10 AM
+        'schedule': crontab(hour=4, minute=30), # 10 AM IST = 4:30 AM UTC
     },
     'nightly-cloudinary-cleanup-midnight': {
         'task': 'src.worker.scheduled_tasks.cleanup_cloudinary_videos_task',
-        'schedule': crontab(hour=3, minute=0), # Every night at 3:00 AM
+        'schedule': crontab(hour=21, minute=30), # 3 AM IST = 9:30 PM UTC
     },
 }

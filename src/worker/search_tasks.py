@@ -4,12 +4,13 @@ from database.mongo_utils import get_db_connection
 from database.elastic_utils import get_es_client
 import time
 from src.logger import get_logger
+from elasticsearch import ConnectionError as ESConnectionError, ConnectionTimeout
 
 logger = get_logger("search_tasks")
 
 @celery_app.task(
     queue="default",
-    autoretry_for=(Exception,),
+    autoretry_for=(ESConnectionError, ConnectionTimeout),
     retry_backoff=True,
     max_retries=3
 )
@@ -91,7 +92,7 @@ def sync_athlete_to_es(athlete_id: int, coach_id: int):
 
 @celery_app.task(
     queue="default",
-    autoretry_for=(Exception,),
+    autoretry_for=(ESConnectionError, ConnectionTimeout),
     retry_backoff=True,
     max_retries=3
 )
@@ -124,7 +125,7 @@ def sync_coach_to_es(coach_id: int):
 
 @celery_app.task(
     queue="default",
-    autoretry_for=(Exception,),
+    autoretry_for=(ESConnectionError, ConnectionTimeout),
     retry_backoff=True,
     max_retries=3
 )

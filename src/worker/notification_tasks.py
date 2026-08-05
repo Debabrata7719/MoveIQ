@@ -2,7 +2,7 @@ import smtplib
 import requests
 from pymongo.errors import PyMongoError
 from src.worker.celery_app import celery_app
-from api.utils.email_utils import (
+from shared.email_utils import (
     send_forgot_password_otp,
     send_signup_otp,
     send_password_changed_success,

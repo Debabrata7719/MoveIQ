@@ -75,7 +75,7 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
             
         # Dispatch Webhooks
         try:
-            from api.utils.webhook_utils import dispatch_webhook_event
+            from database.webhook_utils import dispatch_webhook_event
             payload = {
                 "event": "video.processing_complete",
                 "athlete_id": athlete_id,
@@ -128,10 +128,10 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         try:
             import redis
             import json
-            from api.utils.redis_utils import get_redis_url
+            from database.redis_utils import get_redis_url
             r = redis.from_url(get_redis_url())
             r.publish(f"session_progress_{session_id}", json.dumps({"step": "ERROR", "progress": 100, "error": str(e)}))
-        except:
-            pass
+        except Exception as pub_e:
+            logger.warning(f"Could not publish error progress to Redis: {pub_e}")
             
         raise e

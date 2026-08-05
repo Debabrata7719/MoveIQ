@@ -36,7 +36,7 @@ def publish_progress(session_id: str, step: str, progress: int):
     try:
         import redis
         import json
-        from api.utils.redis_utils import get_redis_url
+        from database.redis_utils import get_redis_url
         r = redis.from_url(get_redis_url())
         r.publish(f"session_progress_{session_id}", json.dumps({"step": step, "progress": progress}))
     except Exception as e:
@@ -89,8 +89,7 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
     from src.risk_scoring.engine import run_risk_scoring
     risk_df = run_risk_scoring(video_name, athlete_id, session_id, quiet=True)
     if risk_df.empty:
-        logger.error("Risk scoring failed to produce data.")
-        sys.exit(1)
+        raise RuntimeError("Risk scoring failed to produce data.")
     
     risk_data = risk_df.replace({np.nan: None}).iloc[0].to_dict()
 
