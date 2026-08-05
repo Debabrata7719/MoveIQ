@@ -1,191 +1,69 @@
-# API Reference
+# MoveIQ API Documentation
 
-This document outlines the core RESTful API endpoints available in the MoveIQ backend.
+This document outlines all available API endpoints, their expected payloads, and required authentication levels. 
 
-## Base URL
-All endpoints are relative to the following base URL during local development:
-`http://localhost:8000/api`
-
-## Authentication
-Most API endpoints require authentication via JSON Web Tokens (JWT). 
-When making a request to a protected endpoint, you must include the token in the `Authorization` header as a Bearer token.
-
-**Format:**
-```
-Authorization: Bearer <your_jwt_token>
-```
+**Base URL:** `http://localhost:8000/api`
 
 ---
 
-## Endpoints
+## 1. Authentication (`/auth`)
+Handles all user registration, login, JWT issuance, and password management.
+*All endpoints are rate-limited via SlowAPI.*
 
-### 1. User Registration
-Register a new coach or athlete account.
-
-**Method & Path:** 
-`POST /auth/register`
-
-**Description:** 
-Creates a new user and returns a JWT access token.
-
-**Request Body:** (JSON)
-```json
-{
-  "email": "user@example.com",
-  "password": "securepassword123",
-  "full_name": "John Doe",
-  "role": "athlete" // or "coach"
-}
-```
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "password123", "full_name": "John Doe", "role": "athlete"}'
-```
-
-**Example Response:** (201 Created)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
-  "token_type": "bearer",
-  "user": {
-    "id": "uuid-1234",
-    "email": "user@example.com",
-    "role": "athlete"
-  }
-}
-```
-
-**Status/Error Codes:**
-- `201 Created` - User registered successfully.
-- `400 Bad Request` - Email already registered or invalid data.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/auth/send-signup-otp` | `POST` | No | Sends an OTP to email for signup verification (Limit: 3/15m). |
+| `/auth/register` | `POST` | No | Creates a new user. Requires email, password, full_name, valid OTP, and role. |
+| `/auth/login` | `POST` | No | Authenticates user and returns JWT Bearer token. |
+| `/auth/forgot-password` | `POST` | No | Sends OTP for password reset. |
+| `/auth/reset-password` | `POST` | No | Resets password using OTP and new strong password. |
+| `/auth/me` | `GET` | **Yes** | Returns details of the currently authenticated user. |
+| `/auth/account` | `PUT` | **Yes** | Updates user full name and email. |
+| `/auth/password` | `PUT` | **Yes** | Updates password (requires old password verification). |
+| `/auth/google/login` | `GET` | No | Redirects to Google OAuth2 consent screen. |
 
 ---
 
-### 2. User Login
-Authenticate a user and retrieve a JWT.
+## 2. Sessions & Analysis (`/sessions`)
+Handles the upload, tracking, and retrieval of video analyses.
 
-**Method & Path:** 
-`POST /auth/login`
-
-**Description:** 
-Validates credentials and returns an access token.
-
-**Request Body:** (JSON or Form Data)
-```json
-{
-  "email": "user@example.com",
-  "password": "securepassword123"
-}
-```
-
-**Example Response:** (200 OK)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
-  "token_type": "bearer"
-}
-```
-
-**Status/Error Codes:**
-- `200 OK` - Login successful.
-- `401 Unauthorized` - Incorrect email or password.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/sessions/upload-and-analyze` | `POST` | **Yes** | Accepts a video file (max 500MB). Triggers background Celery task. Returns `session_id` and `task_id`. Coaches can upload for assigned athletes using `athlete_id` Form param. |
+| `/sessions/history` | `GET` | **Yes** | Returns a list of all past sessions for the authenticated athlete. Includes optimized batched risk and biomechanics data. |
+| `/sessions/{session_id}` | `GET` | **Yes** | Retrieves full details of a specific session. (Secured: Coach/Admin or owner only). |
+| `/sessions/{session_id}` | `DELETE` | **Yes** | Deletes a session and all related MongoDB artifacts (Biomachanics, Risk Scores, Recommendations). |
+| `/sessions/{session_id}/report/download` | `GET` | **Yes** | Generates and returns a downloadable PDF report of the biomechanical analysis. |
+| `/sessions/{session_id}/recommendation` | `GET` | **Yes** | Asynchronously queries Groq LLM to generate plain-text recommendations based on the risk score. Returns cached version if previously generated. |
 
 ---
 
-### 3. Upload Video for Analysis
-Upload a video of an athletic movement for AI biomechanical analysis.
+## 3. WebSockets (`/ws`)
+Handles all real-time communication. *Token must be passed as a query parameter `?token=...`*
 
-**Method & Path:** 
-`POST /analyze/upload`
-
-**Description:** 
-Accepts a video file, runs MediaPipe pose extraction, generates a risk assessment, and returns the analysis ID.
-
-**Authentication:** 
-Required (Bearer Token)
-
-**Request Body:** (multipart/form-data)
-- `file`: The video file (.mp4, .mov)
-- `movement_type`: (String) e.g., "Squat", "Jump"
-
-**Example Request:**
-```bash
-curl -X POST http://localhost:8000/api/analyze/upload \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@/path/to/video.mp4" \
-  -F "movement_type=Squat"
-```
-
-**Example Response:** (200 OK)
-```json
-{
-  "session_id": "session-uuid-5678",
-  "status": "processing",
-  "message": "Video uploaded successfully and analysis has started."
-}
-```
-
-**Status/Error Codes:**
-- `200 OK` - Upload successful.
-- `401 Unauthorized` - Missing or invalid token.
-- `403 Forbidden` - User requires a Pro subscription to upload more videos.
-- `415 Unsupported Media Type` - Invalid file format.
+| Endpoint | Protocol | Auth Required | Description |
+|----------|----------|---------------|-------------|
+| `/ws/progress/{session_id}` | `WS` | **Yes** | Subscribes to a Redis PubSub channel to receive live JSON updates as the Celery worker progresses through video processing steps. |
+| `/ws/notifications` | `WS` | **Yes** | Global notification channel for the user (e.g., "Analysis Complete", "New Chat Message"). |
+| `/ws/chat` | `WS` | **Yes** | Two-way communication channel. Handles `send_message` and `mark_read` actions. Persists data to MongoDB asynchronously to prevent event-loop blocking. |
 
 ---
 
-### 4. Stripe Webhook
-Receive asynchronous events from Stripe regarding subscription status.
+## 4. Coach Management (`/coach`)
+Specific endpoints for users with the `coach` role.
 
-**Method & Path:** 
-`POST /webhooks/stripe`
-
-**Description:** 
-Listens for the `checkout.session.completed` event to upgrade a user's account to Pro.
-
-**Authentication:** 
-None (Validates using Stripe Signature Header)
-
-**Request Body:** (Raw JSON payload from Stripe)
-
-**Example Request:**
-(Sent automatically by Stripe)
-
-**Example Response:** (200 OK)
-```json
-{
-  "status": "success",
-  "message": "Webhook processed successfully"
-}
-```
-
-**Status/Error Codes:**
-- `200 OK` - Event received and processed.
-- `400 Bad Request` - Invalid signature or unhandled event type.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/coach/athletes` | `GET` | **Yes (Coach)** | Returns a list of all athletes assigned to this coach's code. |
+| `/coach/athletes/search` | `GET` | **Yes (Coach)** | Queries Elasticsearch to perform fuzzy searches across the global athlete directory. |
+| `/coach/assign` | `POST` | **Yes (Coach)** | Assigns an athlete to the coach. |
+| `/coach/sessions/{athlete_id}` | `GET` | **Yes (Coach)** | Allows a coach to view the session history of a specifically assigned athlete. |
 
 ---
 
-## Error Handling
+## 5. Webhooks (`/webhooks`)
+Server-to-server endpoints.
 
-The API uses standard HTTP status codes to indicate the success or failure of a request. When an error occurs, the API will typically return a JSON object containing a `detail` message explaining the error.
-
-### Common Error Codes
-
-| Code | Meaning | Description |
-| :--- | :--- | :--- |
-| **400** | Bad Request | The request was malformed, missing required parameters, or failed validation. |
-| **401** | Unauthorized | Authentication failed or a valid JWT token was not provided in the `Authorization` header. |
-| **403** | Forbidden | The authenticated user does not have permission to perform this action (e.g., an Athlete trying to access Coach data, or hitting a paywall limit). |
-| **404** | Not Found | The requested resource (user, session, analysis) could not be found. |
-| **415** | Unsupported Media Type | The uploaded file type is not supported. |
-| **422** | Unprocessable Entity | The request body failed Pydantic validation (e.g., passing a string where an integer is expected). |
-| **500** | Internal Server Error | An unexpected error occurred on the server (e.g., database failure or AI processing failure). |
-
-**Example Error Response:**
-```json
-{
-  "detail": "Invalid credentials provided."
-}
-```
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/webhooks/cloudinary` | `POST` | Implicit | Cloudinary hits this endpoint when background video transformations complete. Updates MongoDB and triggers WebSocket notifications. |
