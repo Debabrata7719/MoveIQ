@@ -209,3 +209,24 @@ Test folders:
 | `tests/unit/` | Password hashing, MongoDB utilities |
 | `tests/worker/` | Celery task logic (video processing, reminders) |
 | `tests/mocking/` | Elasticsearch sync, Cloudinary upload |
+
+---
+
+## 🔄 Continuous Integration (CI)
+
+MoveIQ uses **GitHub Actions** for automated testing to ensure code quality on every push.
+
+### CI Pipeline Overview
+Located at `.github/workflows/ci.yml`, the pipeline runs automatically on:
+- Every `push` to any branch
+- Every `pull_request` to any branch
+
+### What the Pipeline Does
+1. Boots up an isolated Ubuntu runner.
+2. Checks out the repository code.
+3. Sets up Python 3.11 with pip caching.
+4. Installs strictly required OS-level dependencies (`libgl1` and `libglib2.0-0` for OpenCV and MediaPipe).
+5. Installs all project dependencies from `requirements.txt`.
+6. Executes the entire `pytest` suite.
+
+This ensures that no broken code is merged into the `main` branch. The pipeline is designed to run the tests using isolated mock objects, meaning it requires zero external databases or API keys to successfully complete the CI workflow.
