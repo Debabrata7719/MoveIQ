@@ -199,6 +199,21 @@ def get_roster_athletes(current_user: Dict[str, Any] = Depends(get_current_user)
         raise HTTPException(status_code=403, detail="Access denied")
         
     coach_id = current_user["user_id"]
+    
+    from api.utils.redis_utils import get_redis_client
+    import json
+    
+    redis_client = get_redis_client()
+    cache_key = f"coach:{coach_id}:roster"
+    
+    # Try cache
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+        
     assigned = get_assigned_athletes(coach_id)
     
     db = get_db_connection()
@@ -242,6 +257,12 @@ def get_roster_athletes(current_user: Dict[str, Any] = Depends(get_current_user)
             "latest_session_date": latest_session_date,
             "profile": profile
         })
+        
+    # Set cache (300 seconds)
+    try:
+        redis_client.setex(cache_key, 300, json.dumps(roster))
+    except Exception:
+        pass
         
     return roster
 
@@ -316,6 +337,12 @@ def respond_request(payload: RespondRequestSchema, current_user: Dict[str, Any] 
     success = respond_coach_request(payload.request_id, payload.status)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to respond to request")
+        
+    try:
+        from api.utils.redis_utils import get_redis_client
+        get_redis_client().delete(f"coach:{coach_id}:roster")
+    except Exception:
+        pass
         
     # Send Notification to Athlete
     if req_details:
@@ -602,5 +629,11 @@ def delete_athlete_assignment(athlete_id: int, current_user: Dict[str, Any] = De
     success = remove_athlete_from_coach(coach_id, athlete_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to remove athlete connection")
+        
+    try:
+        from api.utils.redis_utils import get_redis_client
+        get_redis_client().delete(f"coach:{coach_id}:roster")
+    except Exception:
+        pass
         
     return {"message": "Athlete connection removed successfully"}

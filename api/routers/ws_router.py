@@ -183,9 +183,8 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(None)):
                     
                 # 2. Save to MongoDB
                 from database.mongo_utils import save_chat_message
-                # Run synchronous DB call in a thread pool (FastAPI does this automatically for sync routes, but here we are in an async route)
-                # For simplicity in this MVP, we call it directly. In heavy production, use motor (async mongo) or run_in_executor
-                saved_msg = save_chat_message(sender_id=user_id, receiver_id=contact_id, message_text=text)
+                # Run synchronous DB call in a thread pool to avoid blocking the event loop
+                saved_msg = await asyncio.to_thread(save_chat_message, user_id, contact_id, text)
                 
                 # 3. Publish to recipient's Redis channel
                 out_payload = json.dumps({"action": "new_message", "message": saved_msg})
@@ -197,19 +196,20 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(None)):
                 # 5. Push Notification (Toast)
                 from database.mongo_utils import insert_notification
                 import uuid
-                insert_notification(
-                    recipient_id=contact_id, 
-                    notif_type="chat_message", 
-                    idempotency_key=f"chat_{saved_msg['_id']}", 
-                    title="New Message", 
-                    message="You have a new message from your coach." if "coach" in roles else "You have a new message from your athlete.",
-                    action_link="/chat"
+                await asyncio.to_thread(
+                    insert_notification,
+                    contact_id, 
+                    "chat_message", 
+                    f"chat_{saved_msg['_id']}", 
+                    "New Message", 
+                    "You have a new message from your coach." if "coach" in roles else "You have a new message from your athlete.",
+                    "/chat"
                 )
                 
             elif action == "mark_read":
                 # Mark messages sent BY contact_id TO user_id as read
                 from database.mongo_utils import mark_messages_as_read
-                updated_count = mark_messages_as_read(sender_id=contact_id, receiver_id=user_id)
+                updated_count = await asyncio.to_thread(mark_messages_as_read, contact_id, user_id)
                 if updated_count > 0:
                     # Notify the sender that their messages were read (Double blue tick)
                     read_payload = json.dumps({"action": "messages_read", "by_user_id": user_id, "contact_id": contact_id})

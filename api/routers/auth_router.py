@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from typing import Dict, Any
@@ -19,6 +19,7 @@ from src.worker.notification_tasks import (
     send_welcome_email_task
 )
 from api.utils.redis_utils import store_otp, verify_otp
+from api.utils.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 google_auth_router = APIRouter(tags=["google-auth"])
@@ -43,7 +44,8 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 @router.post("/send-signup-otp", status_code=status.HTTP_200_OK)
-def send_signup_otp_route(req: EmailRequest):
+@limiter.limit("3/15minutes")
+def send_signup_otp_route(request: Request, req: EmailRequest):
     # Check if user already exists
     existing_user = get_user_by_email(req.email)
     if existing_user:
@@ -57,7 +59,8 @@ def send_signup_otp_route(req: EmailRequest):
     raise HTTPException(status_code=500, detail="Failed to send OTP")
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register_user(user: UserRegister):
+@limiter.limit("5/minute")
+def register_user(request: Request, user: UserRegister):
     # Check if user exists
     existing_user = get_user_by_email(user.email)
     if existing_user:
@@ -89,7 +92,8 @@ def register_user(user: UserRegister):
     return {"message": "User created successfully", "user_id": user_id}
 
 @router.post("/login")
-def login_user(user: UserLogin):
+@limiter.limit("5/minute")
+def login_user(request: Request, user: UserLogin):
     db_user = get_user_by_email(user.email)
     if not db_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -128,7 +132,8 @@ def login_user(user: UserLogin):
     }
 
 @router.post("/forgot-password")
-def forgot_password_route(req: EmailRequest):
+@limiter.limit("3/15minutes")
+def forgot_password_route(request: Request, req: EmailRequest):
     db_user = get_user_by_email(req.email)
     if not db_user:
         # We don't want to explicitly reveal if email exists, but for UX we can
@@ -142,7 +147,8 @@ def forgot_password_route(req: EmailRequest):
     raise HTTPException(status_code=500, detail="Failed to send OTP")
 
 @router.post("/reset-password")
-def reset_password_route(req: ResetPasswordRequest):
+@limiter.limit("5/minute")
+def reset_password_route(request: Request, req: ResetPasswordRequest):
     db_user = get_user_by_email(req.email)
     if not db_user:
         raise HTTPException(status_code=404, detail="Email not found")

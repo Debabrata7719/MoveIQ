@@ -12,8 +12,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Initialize connection pool
 try:
     if DATABASE_URL:
-        # Use ThreadedConnectionPool (minconn=1, maxconn=20) for FastAPI concurrency
-        pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+        # Use ThreadedConnectionPool (minconn=1, maxconn=10) for FastAPI concurrency.
+        # Maxconn lowered to 10 to prevent connection exhaustion when scaling multiple workers.
+        # TIP: If using Supabase, ensure DATABASE_URL uses the Transaction pooler port (6543).
+        pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
     else:
         print("DATABASE_URL is missing in .env")
         pg_pool = None

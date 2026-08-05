@@ -22,6 +22,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+from api.utils.rate_limiter import setup_rate_limiting
+setup_rate_limiting(app)
+
 # Configure CORS (Permissive for local development)
 from fastapi.middleware.cors import CORSMiddleware
 

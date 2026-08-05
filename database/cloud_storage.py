@@ -24,6 +24,25 @@ if cloudinary_url:
         secure=True
     )
 
+def get_upload_signature(folder: str = "sports_injury_raw_videos") -> dict:
+    """Generates a signed signature for direct client-side uploads."""
+    import time
+    if not os.getenv("CLOUDINARY_URL"):
+        return {}
+        
+    timestamp = int(time.time())
+    params_to_sign = {
+        "timestamp": timestamp,
+        "folder": folder
+    }
+    signature = cloudinary.utils.api_sign_request(params_to_sign, cloudinary.config().api_secret)
+    return {
+        "signature": signature,
+        "timestamp": timestamp,
+        "api_key": cloudinary.config().api_key,
+        "cloud_name": cloudinary.config().cloud_name
+    }
+
 def upload_image(file_path: str, public_id: str = None) -> str:
     """Uploads a lightweight image (like a key-moment JPEG) to Cloudinary."""
     if not os.getenv("CLOUDINARY_URL"):

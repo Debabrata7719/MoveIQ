@@ -2,9 +2,11 @@ import os
 import shutil
 import io
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
+from api.utils.rate_limiter import limiter
 from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 from api.dependencies import get_current_user
 from database.mongo_utils import get_db_connection
 from src.main import run_pipeline
@@ -29,8 +31,65 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "raw_videos")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+class ProcessVideoRequest(BaseModel):
+    secure_url: str
+    custom_name: Optional[str] = None
+    athlete_id: Optional[str] = None
+
+@router.get("/upload-signature")
+def get_signature(current_user: Dict[str, Any] = Depends(get_current_user)):
+    from database.cloud_storage import get_upload_signature
+    sig = get_upload_signature()
+    if not sig:
+        raise HTTPException(status_code=500, detail="Cloudinary not configured")
+    return sig
+
+@router.post("/process-video")
+@limiter.limit("10/hour")
+def process_video_endpoint(
+    request: Request,
+    payload: ProcessVideoRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    user_id = current_user["user_id"]
+    
+    if payload.athlete_id:
+        if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Only coaches or admins can upload videos on behalf of athletes")
+        
+        assigned = get_assigned_athletes(user_id)
+        is_assigned = any(str(ath["id"]) == str(payload.athlete_id) for ath in assigned)
+        if not is_assigned and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Athlete is not assigned to your roster")
+        target_athlete_id = str(payload.athlete_id)
+    else:
+        target_athlete_id = str(user_id)
+        
+    final_video_name = payload.custom_name.strip() if payload.custom_name and payload.custom_name.strip() else "Direct_Upload_Video"
+    
+    from database import mongo_utils
+    session_id = mongo_utils.generate_session_id()
+    
+    try:
+        from src.worker.tasks import process_video_task
+        task = process_video_task.delay(
+            file_path=payload.secure_url, 
+            athlete_id=target_athlete_id, 
+            video_name=final_video_name, 
+            session_id=session_id
+        )
+        return {
+            "message": "Analysis started in background",
+            "session_id": session_id,
+            "task_id": task.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
+
 @router.post("/upload-and-analyze")
+@limiter.limit("10/hour")
 def upload_and_analyze(
+    request: Request,
     video: UploadFile = File(...),
     custom_name: Optional[str] = Form(None),
     athlete_id: Optional[str] = Form(None),

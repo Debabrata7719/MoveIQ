@@ -33,11 +33,31 @@ def save_athlete_profile(athlete_id: str, profile_data: dict):
 
 @router.get("")
 def get_profile(current_user: Dict[str, Any] = Depends(get_current_user)):
-    athlete_id = current_user["user_id"]
+    athlete_id = str(current_user["user_id"])
+    
+    from api.utils.redis_utils import get_redis_client
+    import json
+    
+    redis_client = get_redis_client()
+    cache_key = f"athlete:{athlete_id}:profile"
+    
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+        
     profile = get_athlete_profile(athlete_id)
     # Remove MongoDB's internal _id field for JSON serialization
     if "_id" in profile:
         profile["_id"] = str(profile["_id"])
+        
+    try:
+        redis_client.setex(cache_key, 900, json.dumps(profile))
+    except Exception:
+        pass
+        
     return profile
 
 @router.post("")
@@ -46,6 +66,13 @@ def update_profile(
     profile: AthleteProfileUpdate, 
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    athlete_id = current_user["user_id"]
+    athlete_id = str(current_user["user_id"])
     save_athlete_profile(athlete_id, profile.model_dump())
+    
+    try:
+        from api.utils.redis_utils import get_redis_client
+        get_redis_client().delete(f"athlete:{athlete_id}:profile")
+    except Exception:
+        pass
+        
     return {"message": "Profile updated successfully"}

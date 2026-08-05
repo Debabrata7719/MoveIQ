@@ -30,3 +30,5 @@ websockets
 psutil
 requests
 elasticsearch
+slowapi
+

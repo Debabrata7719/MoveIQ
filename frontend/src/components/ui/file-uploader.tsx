@@ -104,23 +104,51 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
     }
     
     try {
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      if (customName.trim()) {
-        formData.append('custom_name', customName.trim());
+      // 1. Get Signature
+      const sigResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/upload-signature`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!sigResponse.ok) {
+        throw new Error('Failed to get upload signature');
       }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/upload-and-analyze`, {
+      const sigData = await sigResponse.json();
+      
+      // 2. Upload directly to Cloudinary
+      const cloudinaryFormData = new FormData();
+      cloudinaryFormData.append('file', selectedFile);
+      cloudinaryFormData.append('api_key', sigData.api_key);
+      cloudinaryFormData.append('timestamp', sigData.timestamp);
+      cloudinaryFormData.append('signature', sigData.signature);
+      cloudinaryFormData.append('folder', 'sports_injury_raw_videos');
+      
+      setProgress(10);
+      const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/video/upload`, {
+        method: 'POST',
+        body: cloudinaryFormData
+      });
+      
+      if (!cloudRes.ok) {
+        throw new Error('Direct upload to cloud failed');
+      }
+      const cloudData = await cloudRes.json();
+      setProgress(50);
+      
+      // 3. Trigger processing on backend
+      const processRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/process-video`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: formData,
+        body: JSON.stringify({
+          secure_url: cloudData.secure_url,
+          custom_name: customName.trim() || undefined
+        }),
       });
 
-      const data = await response.json();
+      const data = await processRes.json();
 
-      if (!response.ok) {
+      if (!processRes.ok) {
         throw new Error(data.detail || 'Failed to start analysis');
       }
 

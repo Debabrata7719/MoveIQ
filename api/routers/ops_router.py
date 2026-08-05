@@ -80,9 +80,31 @@ def patch_user_status(
 @router.get("/analytics")
 def platform_analytics(_: Dict[str, Any] = Depends(require_admin)):
     """Return high-level aggregated operational stats. No individual health data."""
+    from api.utils.redis_utils import get_redis_client
+    import json
+    
+    redis_client = get_redis_client()
+    cache_key = "ops:platform_analytics"
+    
+    # Try cache
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+        
+    # Fetch fresh
     data = get_platform_analytics()
     if not data:
         raise HTTPException(status_code=503, detail="Analytics data unavailable")
+        
+    # Set cache (120 seconds)
+    try:
+        redis_client.setex(cache_key, 120, json.dumps(data))
+    except Exception:
+        pass
+        
     return data
 
 
