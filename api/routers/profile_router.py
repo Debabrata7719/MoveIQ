@@ -35,7 +35,7 @@ def save_athlete_profile(athlete_id: str, profile_data: dict):
 def get_profile(current_user: Dict[str, Any] = Depends(get_current_user)):
     athlete_id = str(current_user["user_id"])
     
-    from api.utils.redis_utils import get_redis_client
+    from database.redis_utils import get_redis_client
     import json
     
     redis_client = get_redis_client()
@@ -70,7 +70,7 @@ def update_profile(
     save_athlete_profile(athlete_id, profile.model_dump())
     
     try:
-        from api.utils.redis_utils import get_redis_client
+        from database.redis_utils import get_redis_client
         get_redis_client().delete(f"athlete:{athlete_id}:profile")
     except Exception:
         pass

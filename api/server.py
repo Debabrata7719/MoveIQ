@@ -25,13 +25,21 @@ app = FastAPI(
 from api.utils.rate_limiter import setup_rate_limiting
 setup_rate_limiting(app)
 
+@app.on_event("startup")
+async def startup_event():
+    from database.mongo_utils import initialize_mongodb_indexes
+    initialize_mongodb_indexes()
+
 # Configure CORS (Permissive for local development)
 from fastapi.middleware.cors import CORSMiddleware
 
 # Enable CORS for the Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://move-iq-theta.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

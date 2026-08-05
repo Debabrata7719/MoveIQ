@@ -88,7 +88,7 @@ def process_video_endpoint(
 
 @router.post("/upload-and-analyze")
 @limiter.limit("10/hour")
-def upload_and_analyze(
+async def upload_and_analyze(
     request: Request,
     video: UploadFile = File(...),
     custom_name: Optional[str] = Form(None),
@@ -123,10 +123,21 @@ def upload_and_analyze(
     from database import mongo_utils
     session_id = mongo_utils.generate_session_id()
 
+    # Check file size (500MB limit)
+    MAX_FILE_SIZE_MB = 500
+    MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+    
+    video_bytes = await video.read()
+    if len(video_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB."
+        )
+
     # Save video temporarily on Render disk
     try:
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(video.file, buffer)
+            buffer.write(video_bytes)
             
         # Upload to Cloudinary for distributed processing
         from database.cloud_storage import upload_video
@@ -172,20 +183,24 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
         {"athlete_id": athlete_id}
     ).sort("created_at", -1))
     
+    session_ids = [s["session_id"] for s in sessions]
+    
+    # Batch queries instead of N+1
+    risk_scores = {
+        doc["session_id"]: doc.get("risk_data", {})
+        for doc in db["risk_scores"].find({"session_id": {"$in": session_ids}})
+    }
+    
+    bio_data_docs = {
+        doc["session_id"]: doc.get("summary", {})
+        for doc in db["biomechanics_data"].find({"session_id": {"$in": session_ids}})
+    }
+    
     # Clean up ObjectIds and attach risk data and biomechanics
     for s in sessions:
         s["_id"] = str(s["_id"])
-        risk_score = db["risk_scores"].find_one({"session_id": s["session_id"]})
-        if risk_score:
-            s["risk_data"] = risk_score.get("risk_data", {})
-        else:
-            s["risk_data"] = {}
-            
-        bio_data = db["biomechanics_data"].find_one({"session_id": s["session_id"]})
-        if bio_data:
-            s["biomechanics"] = bio_data.get("summary", {})
-        else:
-            s["biomechanics"] = {}
+        s["risk_data"] = risk_scores.get(s["session_id"], {})
+        s["biomechanics"] = bio_data_docs.get(s["session_id"], {})
         
     return replace_nan_with_none(sessions)
 
@@ -299,8 +314,9 @@ def download_analysis_report(session_id: str, current_user: Dict[str, Any] = Dep
     )
 
 @router.get("/{session_id}/recommendation")
-def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     from database.mongo_utils import get_full_report
+    from fastapi.concurrency import run_in_threadpool
     
     # 1. Check if the report already exists in MongoDB
     report_data = get_full_report(session_id)
@@ -311,7 +327,7 @@ def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(g
     # 2. If it doesn't exist, we must generate it using the LLM engine
     try:
         from src.recommendations.engine import run_engine
-        run_engine(session_id)
+        await run_in_threadpool(run_engine, session_id)
         
         # Now fetch it again since it should be saved
         report_data = get_full_report(session_id)

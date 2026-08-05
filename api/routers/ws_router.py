@@ -4,6 +4,9 @@ import os
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 import redis.asyncio as aioredis
 from typing import Dict
+from src.logger import get_logger
+
+logger = get_logger("ws_router")
 
 router = APIRouter(prefix="/api/ws", tags=["websockets"])
 
@@ -11,10 +14,20 @@ router = APIRouter(prefix="/api/ws", tags=["websockets"])
 # but it's good practice. We can just yield from Redis pubsub directly in the endpoint.
 
 @router.websocket("/progress/{session_id}")
-async def websocket_progress(websocket: WebSocket, session_id: str):
+async def websocket_progress(websocket: WebSocket, session_id: str, token: str = Query(None)):
     await websocket.accept()
+    if not token:
+        await websocket.close(code=1008, reason="Missing token")
+        return
+        
+    from api.auth.jwt_handler import decode_access_token
+    payload = decode_access_token(token)
     
-    from api.utils.redis_utils import get_redis_url
+    if not payload or "sub" not in payload:
+        await websocket.close(code=1008, reason="Invalid token")
+        return
+    
+    from database.redis_utils import get_redis_url
     redis_url = get_redis_url()
     redis = await aioredis.from_url(redis_url)
     pubsub = redis.pubsub()
@@ -52,11 +65,11 @@ async def websocket_progress(websocket: WebSocket, session_id: str):
 
 @router.websocket("/notifications")
 async def websocket_notifications(websocket: WebSocket, token: str = Query(None)):
-    print(f"[WS] New connection attempt with token: {token[:10] if token else None}...")
+    logger.info(f"[WS] New connection attempt with token: {token[:10] if token else None}...")
     await websocket.accept()
     
     if not token:
-        print("[WS] Missing token, closing.")
+        logger.warning("[WS] Missing token, closing.")
         await websocket.close(code=1008, reason="Missing token")
         return
         
@@ -64,24 +77,24 @@ async def websocket_notifications(websocket: WebSocket, token: str = Query(None)
     payload = decode_access_token(token)
     
     if not payload or "sub" not in payload:
-        print("[WS] Invalid or expired token, closing.")
+        logger.warning("[WS] Invalid or expired token, closing.")
         await websocket.close(code=1008, reason="Invalid token")
         return
         
     user_id = payload.get("sub")
-    print(f"[WS] Authenticated user {user_id}. Connecting to Redis...")
+    logger.info(f"[WS] Authenticated user {user_id}. Connecting to Redis...")
     
     try:
-        from api.utils.redis_utils import get_redis_url
+        from database.redis_utils import get_redis_url
         redis_url = get_redis_url()
         redis = await aioredis.from_url(redis_url)
         pubsub = redis.pubsub()
         
         channel_name = f"user_notifications:{user_id}"
         await pubsub.subscribe(channel_name)
-        print(f"[WS] Subscribed to {channel_name}")
+        logger.info(f"[WS] Subscribed to {channel_name}")
     except Exception as e:
-        print(f"[WS] Failed to connect to Redis: {e}")
+        logger.error(f"[WS] Failed to connect to Redis: {e}")
         await websocket.close(code=1011, reason="Internal Server Error")
         return
     
@@ -129,14 +142,14 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(None)):
         roles = get_user_roles(user_id)
         
     try:
-        from api.utils.redis_utils import get_redis_url
+        from database.redis_utils import get_redis_url
         redis_url = get_redis_url()
         redis = await aioredis.from_url(redis_url)
         pubsub = redis.pubsub()
         channel_name = f"chat_channel:{user_id}"
         await pubsub.subscribe(channel_name)
     except Exception as e:
-        print(f"[WS Chat] Redis error: {e}")
+        logger.error(f"[WS Chat] Redis error: {e}")
         await websocket.close(code=1011, reason="Internal Server Error")
         return
         
@@ -149,7 +162,7 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(None)):
                     await websocket.send_text(data)
                 await asyncio.sleep(0.05)
         except Exception as e:
-            print(f"[WS Chat] Redis listener error: {e}")
+            logger.error(f"[WS Chat] Redis listener error: {e}")
             
     listener_task = asyncio.create_task(redis_listener())
     
@@ -218,7 +231,7 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(None)):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"[WS Chat] WebSocket error: {e}")
+        logger.error(f"[WS Chat] WebSocket error: {e}")
     finally:
         listener_task.cancel()
         await pubsub.unsubscribe(channel_name)

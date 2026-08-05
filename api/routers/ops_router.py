@@ -80,7 +80,7 @@ def patch_user_status(
 @router.get("/analytics")
 def platform_analytics(_: Dict[str, Any] = Depends(require_admin)):
     """Return high-level aggregated operational stats. No individual health data."""
-    from api.utils.redis_utils import get_redis_client
+    from database.redis_utils import get_redis_client
     import json
     
     redis_client = get_redis_client()
@@ -148,7 +148,7 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
         
     # Redis
     try:
-        from api.utils.redis_utils import get_redis_stats
+        from database.redis_utils import get_redis_stats
         results["redis"] = get_redis_stats()
     except Exception as e:
         results["redis"] = {"status": "error", "message": str(e)}
@@ -254,7 +254,7 @@ def update_ops_email(
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
     """Update the ops account email after OTP verification."""
-    from api.utils.redis_utils import verify_otp
+    from database.redis_utils import verify_otp
 
     # Verify OTP against the current email address
     if not verify_otp(current_user["email"], body.otp, prefix="reset_otp"):

@@ -31,7 +31,7 @@ import secrets
 import string
 from src.worker.notification_tasks import send_athlete_welcome_email_task
 from src.worker.search_tasks import sync_athlete_to_es
-from api.utils.redis_utils import store_otp
+from database.redis_utils import store_otp
 
 class AthleteOnboardSchema(BaseModel):
     full_name: str
@@ -200,7 +200,7 @@ def get_roster_athletes(current_user: Dict[str, Any] = Depends(get_current_user)
         
     coach_id = current_user["user_id"]
     
-    from api.utils.redis_utils import get_redis_client
+    from database.redis_utils import get_redis_client
     import json
     
     redis_client = get_redis_client()
@@ -339,7 +339,7 @@ def respond_request(payload: RespondRequestSchema, current_user: Dict[str, Any] 
         raise HTTPException(status_code=500, detail="Failed to respond to request")
         
     try:
-        from api.utils.redis_utils import get_redis_client
+        from database.redis_utils import get_redis_client
         get_redis_client().delete(f"coach:{coach_id}:roster")
     except Exception:
         pass
@@ -631,7 +631,7 @@ def delete_athlete_assignment(athlete_id: int, current_user: Dict[str, Any] = De
         raise HTTPException(status_code=500, detail="Failed to remove athlete connection")
         
     try:
-        from api.utils.redis_utils import get_redis_client
+        from database.redis_utils import get_redis_client
         get_redis_client().delete(f"coach:{coach_id}:roster")
     except Exception:
         pass

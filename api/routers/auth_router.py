@@ -18,7 +18,7 @@ from src.worker.notification_tasks import (
     send_password_changed_success_task,
     send_welcome_email_task
 )
-from api.utils.redis_utils import store_otp, verify_otp
+from database.redis_utils import store_otp, verify_otp
 from api.utils.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
