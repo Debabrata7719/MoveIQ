@@ -112,6 +112,41 @@ export const OpsAnalyticsTab: React.FC<OpsAnalyticsTabProps> = ({ token }) => {
             <div className="h-56 flex items-center justify-center text-slate-400 text-sm">No role data available.</div>
           )}
         </div>
+
+        {/* Video Session Status Pie */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <Video className="w-4 h-4 text-amber-500" />
+            <h3 className="font-bold text-slate-800 text-sm">Video Processing Status</h3>
+          </div>
+          {data.session_breakdown && Object.keys(data.session_breakdown).length > 0 ? (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={Object.entries(data.session_breakdown).map(([name, value]) => ({ name, value: Number(value) }))} 
+                    cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" 
+                    label={({ name, value }) => `${name}: ${value}`} labelLine={false}
+                  >
+                    {Object.entries(data.session_breakdown).map((entry, index) => {
+                      const statusColors: Record<string, string> = {
+                        completed: '#10b981',
+                        failed: '#ef4444',
+                        pending: '#f59e0b',
+                        'Processing Biomechanics': '#3b82f6'
+                      };
+                      return <Cell key={`cell-${index}`} fill={statusColors[entry[0]] || '#94a3b8'} />;
+                    })}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', borderRadius: '10px', color: '#f8fafc', fontSize: 12 }} />
+                  <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12, fontWeight: 600 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-56 flex items-center justify-center text-slate-400 text-sm">No session data available.</div>
+          )}
+        </div>
       </div>
     </div>
   );

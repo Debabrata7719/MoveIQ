@@ -848,13 +848,30 @@ def get_platform_analytics() -> Dict[str, Any]:
         """)
         daily_registrations = [{"date": str(r['day']), "count": r['count']} for r in cursor.fetchall()]
 
-        # Total sessions processed
+        # Total sessions processed & status breakdown
         try:
             from database.mongo_utils import get_db_connection as get_mongo
             mongo_db = get_mongo()
-            total_sessions = mongo_db["sessions"].count_documents({})
+            
+            pipeline = [
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+            ]
+            status_counts = list(mongo_db["sessions"].aggregate(pipeline))
+            
+            total_sessions = 0
+            session_breakdown = {"completed": 0, "processing": 0, "failed": 0, "pending": 0}
+            
+            for status in status_counts:
+                st = status["_id"]
+                count = status["count"]
+                total_sessions += count
+                if st in session_breakdown:
+                    session_breakdown[st] = count
+                else:
+                    session_breakdown[st] = count
         except Exception:
             total_sessions = 0
+            session_breakdown = {}
 
         return {
             "total_users": total_users,
@@ -862,10 +879,36 @@ def get_platform_analytics() -> Dict[str, Any]:
             "roles_breakdown": roles_breakdown,
             "daily_registrations": daily_registrations,
             "total_sessions": total_sessions,
+            "session_breakdown": session_breakdown,
         }
     except psycopg2.Error as err:
         print(f"Error get_platform_analytics: {err}")
         return {}
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        release_connection(conn)
+
+def get_postgres_stats() -> dict:
+    """Returns basic monitoring stats from PostgreSQL."""
+    conn = get_connection()
+    if not conn:
+        return {"status": "error", "message": "No connection"}
+    try:
+        cursor = conn.cursor(cursor_factory=DictCursor)
+        cursor.execute("SELECT count(*) FROM pg_stat_activity")
+        active_connections = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT pg_database_size(current_database())")
+        db_size_bytes = cursor.fetchone()[0]
+        
+        return {
+            "status": "ok",
+            "active_connections": active_connections,
+            "database_size_mb": round(db_size_bytes / (1024 * 1024), 2)
+        }
+    except psycopg2.Error as err:
+        return {"status": "error", "message": str(err)}
     finally:
         if 'cursor' in locals():
             cursor.close()

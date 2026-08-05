@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, Database, Cloud, Cpu, HardDrive, Zap } from 'lucide-react';
+import { Loader2, RefreshCw, Database, Cloud, Cpu, HardDrive, Zap, Server, ActivitySquare } from 'lucide-react';
 
 interface OpsDiagnosticsTabProps {
   token: string;
@@ -128,6 +128,8 @@ export const OpsDiagnosticsTab: React.FC<OpsDiagnosticsTabProps> = ({ token }) =
             data?.sql_db ? (
               <>
                 <Detail label="Latency" value={`${data.sql_db.latency_ms ?? '—'}ms`} />
+                <Detail label="Connections" value={`${data.sql_db.active_connections ?? '—'}`} />
+                <Detail label="DB Size" value={`${data.sql_db.database_size_mb ?? '—'} MB`} />
                 {data.sql_db.message && <Detail label="Message" value={data.sql_db.message} />}
               </>
             ) : <p className="text-xs text-slate-400">No data</p>
@@ -142,11 +144,47 @@ export const OpsDiagnosticsTab: React.FC<OpsDiagnosticsTabProps> = ({ token }) =
             data?.mongodb ? (
               <>
                 <Detail label="Latency" value={`${data.mongodb.latency_ms ?? '—'}ms`} />
+                <Detail label="DB Size" value={`${data.mongodb.database_size_mb ?? '—'} MB`} />
+                <Detail label="Collections" value={`${data.mongodb.collections_count ?? '—'}`} />
+                <Detail label="Objects" value={`${data.mongodb.objects_count ?? '—'}`} />
                 {data.mongodb.message && <Detail label="Message" value={data.mongodb.message} />}
               </>
             ) : <p className="text-xs text-slate-400">No data</p>
           }
         />
+
+        <ServiceCard
+          icon={Server}
+          name="Redis Cache"
+          status={s('redis')}
+          details={
+            data?.redis ? (
+              <>
+                <Detail label="Memory Used" value={`${data.redis.memory_used_mb ?? '—'} MB`} />
+                <Detail label="Clients" value={`${data.redis.connected_clients ?? '—'}`} />
+                <Detail label="Hits / Misses" value={`${data.redis.keyspace_hits ?? 0} / ${data.redis.keyspace_misses ?? 0}`} />
+                {data.redis.message && <Detail label="Message" value={data.redis.message} />}
+              </>
+            ) : <p className="text-xs text-slate-400">No data</p>
+          }
+        />
+
+        <ServiceCard
+          icon={ActivitySquare}
+          name="Celery Workers"
+          status={s('celery')}
+          details={
+            data?.celery ? (
+              <>
+                <Detail label="Active Jobs" value={`${data.celery.active_jobs ?? 0}`} />
+                <Detail label="Reserved Jobs" value={`${data.celery.reserved_jobs ?? 0}`} />
+                <Detail label="Scheduled Jobs" value={`${data.celery.scheduled_jobs ?? 0}`} />
+                {data.celery.message && <Detail label="Message" value={data.celery.message} />}
+              </>
+            ) : <p className="text-xs text-slate-400">No data</p>
+          }
+        />
+
 
         <ServiceCard
           icon={Cloud}
@@ -183,9 +221,11 @@ export const OpsDiagnosticsTab: React.FC<OpsDiagnosticsTabProps> = ({ token }) =
           details={
             data?.server ? (
               <>
-                <Detail label="CPU Usage" value={`${data.server.cpu_percent}%`} />
+                <Detail label="Uptime" value={`${data.server.uptime_days ?? '—'} days`} />
+                <Detail label="CPU Load" value={data.server.load_average ? data.server.load_average.join(', ') : '—'} />
                 <Detail label="RAM Usage" value={`${data.server.ram_used_gb}GB / ${data.server.ram_total_gb}GB (${data.server.ram_percent}%)`} />
                 <Detail label="Disk" value={`${data.server.disk_used_gb}GB / ${data.server.disk_total_gb}GB (${data.server.disk_percent}%)`} />
+                <Detail label="Network (In/Out)" value={`${data.server.net_recv_mb ?? 0} MB / ${data.server.net_sent_mb ?? 0} MB`} />
                 {data.server.message && <Detail label="Error" value={data.server.message} />}
               </>
             ) : <p className="text-xs text-slate-400">No data</p>

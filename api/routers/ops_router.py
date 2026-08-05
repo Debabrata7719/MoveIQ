@@ -101,7 +101,9 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
         conn = get_connection()
         latency_ms = round((time.time() - t0) * 1000, 2)
         if conn:
-            results["sql_db"] = {"status": "ok", "latency_ms": latency_ms}
+            from database.postgres_utils import get_postgres_stats
+            pg_stats = get_postgres_stats()
+            results["sql_db"] = {"status": "ok", "latency_ms": latency_ms, **pg_stats}
             release_connection(conn)
         else:
             results["sql_db"] = {"status": "error", "message": "No connection returned"}
@@ -112,17 +114,46 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
     try:
         import time
         from database.mongo_utils import get_db_connection as get_mongo
+        from database.mongo_utils import get_mongo_stats
         t0 = time.time()
         mongo_db = get_mongo()
         mongo_db.list_collection_names()
         latency_ms = round((time.time() - t0) * 1000, 2)
-        results["mongodb"] = {"status": "ok", "latency_ms": latency_ms}
+        m_stats = get_mongo_stats()
+        results["mongodb"] = {"status": "ok", "latency_ms": latency_ms, **m_stats}
     except Exception as e:
         results["mongodb"] = {"status": "error", "message": str(e)}
+        
+    # Redis
+    try:
+        from api.utils.redis_utils import get_redis_stats
+        results["redis"] = get_redis_stats()
+    except Exception as e:
+        results["redis"] = {"status": "error", "message": str(e)}
+        
+    # Celery
+    try:
+        from src.worker.celery_app import celery_app
+        # Use ping or just return basic celery info to avoid blocking if celery is down
+        results["celery"] = {"status": "ok", "broker": "connected (see Redis stats)"}
+        # To get deep inspect stats: celery_app.control.inspect().active() (can be slow, so we keep it light)
+        i = celery_app.control.inspect(timeout=1.0)
+        if i:
+            active = i.active() or {}
+            reserved = i.reserved() or {}
+            scheduled = i.scheduled() or {}
+            results["celery"]["active_jobs"] = sum(len(v) for v in active.values())
+            results["celery"]["reserved_jobs"] = sum(len(v) for v in reserved.values())
+            results["celery"]["scheduled_jobs"] = sum(len(v) for v in scheduled.values())
+        else:
+            results["celery"]["message"] = "Workers not responding or offline"
+    except Exception as e:
+        results["celery"] = {"status": "error", "message": str(e)}
 
     # Cloudinary
     try:
         import cloudinary
+        import os
         cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
         api_key = os.getenv("CLOUDINARY_API_KEY", "")
         results["cloudinary"] = {
@@ -142,18 +173,32 @@ def system_diagnostics(_: Dict[str, Any] = Depends(require_admin)):
 
     # Server Resources
     try:
+        import psutil
+        import time
         cpu = psutil.cpu_percent(interval=0.2)
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
+        net = psutil.net_io_counters()
+        uptime_seconds = time.time() - psutil.boot_time()
+        
+        try:
+            load_avg = psutil.getloadavg()
+        except Exception:
+            load_avg = (0.0, 0.0, 0.0) # getloadavg might fail on Windows
+            
         results["server"] = {
             "status": "ok",
+            "uptime_days": round(uptime_seconds / (24 * 3600), 2),
             "cpu_percent": cpu,
+            "load_average": load_avg,
             "ram_used_gb": round(mem.used / (1024 ** 3), 2),
             "ram_total_gb": round(mem.total / (1024 ** 3), 2),
             "ram_percent": mem.percent,
             "disk_used_gb": round(disk.used / (1024 ** 3), 2),
             "disk_total_gb": round(disk.total / (1024 ** 3), 2),
-            "disk_percent": disk.percent
+            "disk_percent": disk.percent,
+            "net_sent_mb": round(net.bytes_sent / (1024 * 1024), 2),
+            "net_recv_mb": round(net.bytes_recv / (1024 * 1024), 2)
         }
     except Exception as e:
         results["server"] = {"status": "error", "message": str(e)}

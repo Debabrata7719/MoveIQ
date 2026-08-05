@@ -142,6 +142,20 @@ def update_session_key_moments(session_id: str, key_moments: list):
     except Exception as e:
         logger.error(f"MongoDB error updating key moments: {e}")
 
+def get_mongo_stats() -> dict:
+    """Returns basic monitoring stats from MongoDB."""
+    try:
+        db = get_db_connection()
+        stats = db.command("dbstats")
+        return {
+            "status": "ok",
+            "database_size_mb": round(stats.get("dataSize", 0) / (1024 * 1024), 2),
+            "collections_count": stats.get("collections", 0),
+            "objects_count": stats.get("objects", 0)
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 def save_biomechanics_data(session_id: str, frames_data: list, summary_data: dict):
     db = get_db_connection()

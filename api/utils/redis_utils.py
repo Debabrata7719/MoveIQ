@@ -111,3 +111,43 @@ def publish_notification_event(user_id: int, notification: dict) -> bool:
     except Exception as e:
         print(f"Failed to publish notification to Redis: {e}")
         return False
+
+def get_redis_stats() -> dict:
+    """Returns basic monitoring stats from Redis. Handles both local and Upstash gracefully."""
+    try:
+        r = get_redis_client()
+        # Upstash custom client (REST) does not have .info(). Fallback to standard redis-py if needed.
+        if hasattr(r, 'info'):
+            info = r.info()
+            return {
+                "status": "ok",
+                "memory_used_mb": round(info.get("used_memory", 0) / (1024 * 1024), 2),
+                "connected_clients": info.get("connected_clients", 0),
+                "keyspace_hits": info.get("keyspace_hits", 0),
+                "keyspace_misses": info.get("keyspace_misses", 0)
+            }
+        else:
+            # For Upstash REST client, info is not easily available via REST out-of-the-box without INFO command support.
+            # We attempt a raw INFO command via REST.
+            res = requests.post(UPSTASH_URL, json=["INFO"], headers=r.headers)
+            if res.status_code == 200:
+                raw_info = res.json().get("result", "")
+                
+                # Parse raw Redis INFO string
+                stats = {"status": "ok", "memory_used_mb": "N/A", "connected_clients": "N/A"}
+                for line in raw_info.splitlines():
+                    if ":" in line:
+                        k, v = line.split(":", 1)
+                        if k == "used_memory":
+                            stats["memory_used_mb"] = round(int(v) / (1024 * 1024), 2)
+                        elif k == "connected_clients":
+                            stats["connected_clients"] = int(v)
+                        elif k == "keyspace_hits":
+                            stats["keyspace_hits"] = int(v)
+                        elif k == "keyspace_misses":
+                            stats["keyspace_misses"] = int(v)
+                return stats
+            return {"status": "ok", "message": "Upstash REST - stats not available"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
