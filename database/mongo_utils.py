@@ -71,7 +71,7 @@ def get_db_connection():
         return _db_instance
     except Exception as e:
         logger.error(f"Could not connect to MongoDB Atlas at {MONGO_URI}. Reason: {e}")
-        sys.exit(1)
+        raise ConnectionFailure(f"MongoDB connection failed: {e}")
 
 
 def generate_session_id() -> str:
@@ -130,17 +130,7 @@ def update_session_video_url(session_id: str, video_url: str):
         logger.error(f"MongoDB error updating video URL: {e}")
 
 
-def update_session_key_moments(session_id: str, key_moments: list):
-    """Update an existing session with the Base64 key moment images."""
-    db = get_db_connection()
-    try:
-        sessions_collection = db["sessions"]
-        sessions_collection.update_one(
-            {"session_id": session_id},
-            {"$set": {"key_moments": key_moments}}
-        )
-    except Exception as e:
-        logger.error(f"MongoDB error updating key moments: {e}")
+
 
 def get_mongo_stats() -> dict:
     """Returns basic monitoring stats from MongoDB."""
@@ -236,19 +226,19 @@ def get_full_report(session_id: str) -> dict:
 
 def update_session_key_moments(session_id: str, key_moments_b64: list):
     """Saves base64 encoded images to the session document in MongoDB."""
-    db = get_db_connection()
-    db["sessions"].update_one(
-        {"session_id": session_id},
-        {"$set": {"key_moments": key_moments_b64}}
-    )
+    try:
+        db = get_db_connection()
+        db["sessions"].update_one(
+            {"session_id": session_id},
+            {"$set": {"key_moments": key_moments_b64}}
+        )
+    except Exception as e:
+        logger.error(f"MongoDB error updating key moments: {e}")
 
 def insert_notification(recipient_id: int, notif_type: str, idempotency_key: str, title: str, message: str, action_link: str = None) -> bool:
     """Inserts a notification using idempotency_key to prevent duplicates."""
     db = get_db_connection()
     collection = db["notifications"]
-    
-    # Ensure unique index exists
-    collection.create_index("idempotency_key", unique=True)
     
     document = {
         "recipient_id": recipient_id,
@@ -270,7 +260,7 @@ def insert_notification(recipient_id: int, notif_type: str, idempotency_key: str
         if "created_at" in document:
             document["created_at"] = document["created_at"].isoformat()
             
-        from api.utils.redis_utils import publish_notification_event
+        from database.redis_utils import publish_notification_event
         publish_notification_event(recipient_id, document)
         
         return True
@@ -287,13 +277,8 @@ def get_user_notifications(user_id, limit: int = 50) -> list:
     collection = db["notifications"]
     
     # Check for both int and str to be safe
-    try:
-        user_id_int = int(user_id)
-    except ValueError:
-        user_id_int = user_id
-        
     notifs = list(collection.find(
-        {"recipient_id": {"$in": [user_id, user_id_int, str(user_id)]}},
+        {"recipient_id": int(user_id)},
         {"_id": 1, "type": 1, "title": 1, "message": 1, "is_read": 1, "action_link": 1, "created_at": 1}
     ).sort("created_at", -1).limit(limit))
     
@@ -308,13 +293,8 @@ def mark_notification_read(notif_id: str, user_id) -> bool:
     db = get_db_connection()
     collection = db["notifications"]
     
-    try:
-        user_id_int = int(user_id)
-    except ValueError:
-        user_id_int = user_id
-        
     result = collection.update_one(
-        {"_id": ObjectId(notif_id), "recipient_id": {"$in": [user_id, user_id_int, str(user_id)]}},
+        {"_id": ObjectId(notif_id), "recipient_id": int(user_id)},
         {"$set": {"is_read": True}}
     )
     return result.modified_count > 0
@@ -388,6 +368,21 @@ def get_unread_chat_counts(user_id: int) -> dict:
         {"$group": {"_id": "$sender_id", "unread_count": {"$sum": 1}}}
     ]
     results = collection.aggregate(pipeline)
-    
     return {str(r["_id"]): r["unread_count"] for r in results}
+
+def initialize_mongodb_indexes():
+    """Called once at startup to create necessary indexes."""
+    try:
+        db = get_db_connection()
+        db["notifications"].create_index("idempotency_key", unique=True)
+        db["sessions"].create_index("athlete_id")
+        db["sessions"].create_index("session_id")
+        db["risk_scores"].create_index("session_id")
+        db["risk_scores"].create_index("athlete_id")
+        db["biomechanics_data"].create_index("session_id")
+        db["chat_messages"].create_index([("sender_id", 1), ("receiver_id", 1)])
+        db["chat_messages"].create_index([("receiver_id", 1), ("status", 1)])
+        logger.info("MongoDB indexes initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize MongoDB indexes: {e}")
 

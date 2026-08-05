@@ -1,6 +1,9 @@
 import os
 from elasticsearch import Elasticsearch
 from dotenv import load_dotenv
+from src.logger import get_logger
+
+logger = get_logger("elastic_utils")
 
 load_dotenv()
 
@@ -24,11 +27,11 @@ def get_es_client():
         _es_client = Elasticsearch([es_url])
         # Verify connection
         if _es_client.ping():
-            print(f"Connected to Elasticsearch at {es_url}")
+            logger.info(f"Connected to Elasticsearch at {es_url}")
         else:
-            print(f"Could not connect to Elasticsearch at {es_url}")
+            logger.warning(f"Could not connect to Elasticsearch at {es_url}")
     except Exception as e:
-        print(f"Error initializing Elasticsearch client: {e}")
+        logger.error(f"Error initializing Elasticsearch client: {e}")
         _es_client = None
 
     return _es_client
@@ -64,11 +67,11 @@ def initialize_indices():
     try:
         if not es.indices.exists(index=index_name):
             es.indices.create(index=index_name, body=athlete_mapping)
-            print(f"Created index: {index_name}")
+            logger.info(f"Created index: {index_name}")
         else:
-            print(f"Index {index_name} already exists.")
+            logger.info(f"Index {index_name} already exists.")
     except Exception as e:
-        print(f"Failed to create index {index_name}: {e}")
+        logger.error(f"Failed to create index {index_name}: {e}")
 
     # Coach index mapping
     coach_mapping = {
@@ -85,9 +88,9 @@ def initialize_indices():
     try:
         if not es.indices.exists(index="coaches"):
             es.indices.create(index="coaches", body=coach_mapping)
-            print("Created index: coaches")
+            logger.info("Created index: coaches")
     except Exception as e:
-        print(f"Failed to create index coaches: {e}")
+        logger.error(f"Failed to create index coaches: {e}")
 
     # Global users index mapping
     users_mapping = {
@@ -106,6 +109,6 @@ def initialize_indices():
     try:
         if not es.indices.exists(index="users_global"):
             es.indices.create(index="users_global", body=users_mapping)
-            print("Created index: users_global")
+            logger.info("Created index: users_global")
     except Exception as e:
-        print(f"Failed to create index users_global: {e}")
+        logger.error(f"Failed to create index users_global: {e}")
