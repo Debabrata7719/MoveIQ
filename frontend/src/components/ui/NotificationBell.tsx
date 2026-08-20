@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Activity, UserPlus, Info, CheckCircle2, X } from 'lucide-react';
+import { Bell, Activity, UserPlus, Info, CheckCircle2, X, CheckCheck } from 'lucide-react';
 
 interface Notification {
   _id: string;
@@ -104,6 +104,23 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ token }) => 
     }
   };
 
+  const markAllAsRead = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (unreadCount === 0) return;
+
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/notifications/read-all`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
+    }
+  };
+
   const getIcon = (type: string) => {
     if (type.includes("ALERT") || type.includes("RISK")) return <Activity className="w-4 h-4 text-red-500" />;
     if (type.includes("COACH") || type.includes("REQUEST")) return <UserPlus className="w-4 h-4 text-blue-500" />;
@@ -132,11 +149,21 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ token }) => 
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
           <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 bg-slate-50/50">
             <h3 className="font-bold text-sm text-slate-800">Notifications</h3>
-            {unreadCount > 0 && (
-              <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
-                {unreadCount} new
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                  {unreadCount} new
+                </span>
+              )}
+              <button 
+                onClick={markAllAsRead}
+                disabled={unreadCount === 0}
+                title="Mark all as read"
+                className={`p-1 rounded-md transition-colors ${unreadCount > 0 ? 'text-blue-600 hover:bg-blue-100' : 'text-slate-300 cursor-not-allowed'}`}
+              >
+                <CheckCheck className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           
           <div className="max-h-[400px] overflow-y-auto">

@@ -1,6 +1,6 @@
 # MoveIQ - Advanced Sports Injury Risk Assessment Platform
 
-![MoveIQ Banner](https://via.placeholder.com/1200x300?text=MoveIQ+Sports+Injury+Analysis)
+![MoveIQ Banner](https://placehold.co/1200x300/004ccd/FFFFFF?text=MoveIQ+Sports+Injury+Analysis)
 
 MoveIQ is an end-to-end, highly scalable AI-powered platform designed to analyze athletic movements in real-time, predict injury risks, and provide biomechanical feedback to both athletes and coaches. The system relies on advanced machine learning algorithms processed via a distributed background worker system, ensuring a smooth, non-blocking experience for end users.
 
@@ -112,24 +112,16 @@ Two custom Docker images are used:
 | Backend | `Dockerfile` (root) | `api`, `worker`, `beat` containers — all share one image, different startup commands |
 | Frontend | `frontend/Dockerfile` | `frontend` container — Next.js 3-stage build |
 
-Plus two official images: `redis:7-alpine` and `elasticsearch:8.13.0`.
+Plus official images for the local databases: `redis:7-alpine`, `elasticsearch:8.13.0`, `mysql:8.0`, and `mongo:6.0`.
 
 ### Step 1 — Configure Environment
 
 ```bash
 # Copy the Docker-specific env template
-cp .env.docker .env.docker
+cp .env.docker.example .env.docker
 ```
 
-Open `.env.docker` and fill in your real credentials (copy from `.env`). The **only values that must differ** from your regular `.env` are:
-
-```env
-# Use Docker service names, NOT localhost
-REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/0
-LOCAL_ELASTICSEARCH_URL=http://elasticsearch:9200
-```
+Open `.env.docker` and fill in your real cloud API credentials (Groq, Gemini, Cloudinary, etc.). The Docker networking links (like `DB_HOST=mysql`) are already correctly configured for you.
 
 > **Note:** `.env.docker` is in `.gitignore` — your secrets will never be pushed to GitHub.
 
@@ -142,8 +134,8 @@ docker-compose up --build
 This single command:
 1. Builds the backend Python image (installs all `requirements.txt`)
 2. Builds the frontend Next.js image (3-stage optimized build)
-3. Pulls `redis:7-alpine` and `elasticsearch:8.13.0` official images
-4. Starts all 6 containers in the correct order (Redis starts first, then workers)
+3. Starts **7 completely local containers** (Redis, Elasticsearch, MySQL, MongoDB, API, Workers, Frontend)
+4. *Automatically* initializes your MySQL database schema using `database/init.sql`
 
 ### Step 3 — Verify Everything Is Running
 
@@ -152,8 +144,9 @@ This single command:
 | Next.js Frontend | http://localhost:3000 |
 | FastAPI Backend | http://localhost:8000 |
 | API Swagger Docs | http://localhost:8000/docs |
-| Health Check | http://localhost:8000/api/health |
 | Elasticsearch | http://localhost:9200 |
+| MongoDB | localhost:27017 |
+| MySQL | localhost:3306 |
 | Redis | localhost:6379 |
 
 ### Stop Everything
@@ -168,6 +161,8 @@ docker-compose down -v       # Stop containers AND wipe all volumes (fresh start
 | Volume | Purpose |
 |---|---|
 | `es_data` | Elasticsearch index data — persists across restarts |
+| `mysql_data` | MySQL relational data — persists across restarts |
+| `mongodb_data` | MongoDB document data — persists across restarts |
 | `temp_uploads` | Shared disk between `api` and `worker` for video file handoff |
 
 ---
@@ -177,14 +172,15 @@ docker-compose down -v       # Stop containers AND wipe all volumes (fresh start
 If you prefer running services directly:
 
 1. **Clone the repository**
-2. **Create virtual environment:** `python -m venv venv && venv\Scripts\activate`
+2. **Create virtual environment:** `python -m venv venv && venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Mac/Linux)
 3. **Install requirements:** `pip install -r requirements.txt`
-4. **Configure Environment:** Copy `.env.example` to `.env` and fill in your keys
-5. **Start external services:** Ensure Redis, MongoDB, MySQL/PostgreSQL, and Elasticsearch are running locally
-6. **Run the API:** `uvicorn api.server:app --reload --port 8000`
-7. **Run the Celery Worker:** `celery -A src.worker.celery_app worker --loglevel=info -P threads`
-8. **Run Celery Beat (Cron Jobs):** `celery -A src.worker.celery_app beat --loglevel=info`
-9. **Run the Frontend:** `cd frontend && npm install && npm run dev`
+4. **Configure Environment:** Copy `.env.example` to `.env` and fill in your keys. Ensure `DB_HOST=localhost` and `USE_LOCAL_DB=true`.
+5. **Start external services:** Ensure Redis, MongoDB, MySQL, and Elasticsearch are running locally.
+6. **Initialize MySQL Schema:** Create a database named `sports_injury_detection` and import `database/init.sql` to generate the tables.
+7. **Run the API:** `uvicorn api.server:app --reload --port 8000`
+8. **Run the Celery Worker:** `celery -A src.worker.celery_app worker --loglevel=info -P threads`
+9. **Run Celery Beat (Cron Jobs):** `celery -A src.worker.celery_app beat --loglevel=info`
+10. **Run the Frontend:** `cd frontend && npm install && npm run dev`
 
 ---
 

@@ -299,6 +299,17 @@ def mark_notification_read(notif_id: str, user_id) -> bool:
     )
     return result.modified_count > 0
 
+def mark_all_notifications_read(user_id) -> int:
+    """Marks all notifications for a user as read."""
+    db = get_db_connection()
+    collection = db["notifications"]
+    
+    result = collection.update_many(
+        {"recipient_id": int(user_id), "is_read": False},
+        {"$set": {"is_read": True}}
+    )
+    return result.modified_count
+
 # =========================================================================
 # CHAT SYSTEM (WEBSOCKETS & REST)
 # =========================================================================

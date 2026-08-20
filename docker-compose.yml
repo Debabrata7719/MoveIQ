@@ -16,8 +16,40 @@ services:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+  # ── MongoDB (NoSQL DB) ─────────────────────────────────────
+  # Stores AI Reports, Biomechanics data, and Chat history
+  mongodb:
+    image: mongo:6.0
+    container_name: moveiq_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MySQL (Relational DB) ──────────────────────────────────
+  # Stores Users, Roles, and Coach/Athlete relationships
+  mysql:
+    image: mysql:8.0
+    container_name: moveiq_mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   # ── Elasticsearch ──────────────────────────────────────────
@@ -123,4 +155,12 @@ volumes:
 
   # Shared temporary storage for video files between api ↔ worker
   temp_uploads:
+    driver: local
+
+  # Persists MySQL database records
+  mysql_data:
+    driver: local
+
+  # Persists MongoDB database records
+  mongodb_data:
     driver: local

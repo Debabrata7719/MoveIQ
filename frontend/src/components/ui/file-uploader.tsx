@@ -156,7 +156,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
       const wsHost = apiUrl.replace(/^https?:\/\//, '');
-      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}`);
+      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}?token=${token}`);
 
       ws.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
@@ -199,6 +199,14 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
         setToast({ message: 'WebSocket connection failed.', type: 'error' });
         setUploading(false);
         setProgress(0);
+      };
+
+      ws.onclose = (event) => {
+        if (!event.wasClean && uploading) {
+          setToast({ message: 'Disconnected from progress tracking.', type: 'error' });
+          setUploading(false);
+          setProgress(0);
+        }
       };
 
     } catch (err: any) {

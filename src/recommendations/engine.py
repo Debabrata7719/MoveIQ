@@ -26,8 +26,13 @@ try:
 except ImportError:
     MONGO_AVAILABLE = False
 
-# --- Load .env file (GROQ_API_KEY, LANGCHAIN_* variables for LangSmith tracing) ---
+# --- Load .env file (GROQ_API_KEY, GEMINI_API_KEY, LANGCHAIN_* variables for LangSmith tracing) ---
 load_dotenv()
+
+# langchain-google-genai reads GOOGLE_API_KEY; alias from GEMINI_API_KEY if not set
+import os as _os
+if not _os.getenv("GOOGLE_API_KEY") and _os.getenv("GEMINI_API_KEY"):
+    _os.environ["GOOGLE_API_KEY"] = _os.getenv("GEMINI_API_KEY")
 
 
 from src.logger import get_logger
@@ -146,8 +151,17 @@ def lookup_exercises(state: RecommendationState) -> RecommendationState:
 
 
 def generate_recommendation(state: RecommendationState) -> RecommendationState:
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
-    structured_llm = llm.with_structured_output(RecommendationOutput)
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    # Groq qwen3.6-27b is primary (faster)
+    # Gemini 3.6 Flash is the fallback if Groq fails
+    llm_primary = ChatGroq(model="qwen/qwen3.6-27b", temperature=0.4).with_structured_output(RecommendationOutput)
+    llm_fallback = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0.4).with_structured_output(RecommendationOutput)
+    
+    # with_fallbacks: if Groq raises any exception, LangChain automatically
+    # retries the same inputs against Gemini.
+    structured_llm = llm_primary.with_fallbacks([llm_fallback])
+    logger.info("LLM chain built: Groq Qwen 3.6-27b (primary) -> Gemini 3.6 Flash (fallback)")
 
     chain = RECOMMENDATION_PROMPT | structured_llm
 

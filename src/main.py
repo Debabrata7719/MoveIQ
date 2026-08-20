@@ -131,19 +131,9 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
         key_moments_urls = []
         print(f"\n{Colors.BLUE}Uploading Key Moment Images to Cloudinary...{Colors.ENDC}")
         publish_progress(session_id, "Capturing Visual Evidence", 85)
-        try:
-            from database.cloud_storage import upload_image
-            for i, img_path in enumerate(key_image_paths):
-                if os.path.exists(img_path):
-                    url = upload_image(img_path, public_id=f"session_{session_id}_frame_{i}")
-
-                    if url:
-                        key_moments_urls.append(url)
-
-        except ImportError:
-            logger.warning("Could not import Cloudinary modules. Skipping image uploads.")
-        
-        if key_moments_urls:
+        # Bypass Cloudinary Upload as requested by user
+        if key_moments_urls is None:
+            key_moments_urls = []
             logger.debug(f"Extracted key moments URLs: {key_moments_urls}")
             try:
                 from database.mongo_utils import update_session_key_moments

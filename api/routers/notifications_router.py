@@ -23,6 +23,14 @@ def fetch_notifications(limit: int = 50, current_user: Dict[str, Any] = Depends(
         "unread_count": unread_count
     }
 
+@router.patch("/read-all")
+def read_all_notifications(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Mark all notifications as read for the user."""
+    from database.mongo_utils import mark_all_notifications_read
+    user_id = current_user["user_id"]
+    updated_count = mark_all_notifications_read(user_id)
+    return {"message": f"Marked {updated_count} notifications as read"}
+
 @router.patch("/{notification_id}/read")
 def read_notification(notification_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Mark a specific notification as read."""
