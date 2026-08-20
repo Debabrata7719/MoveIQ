@@ -2,15 +2,28 @@ import os
 import shutil
 import io
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
+from api.utils.rate_limiter import limiter
 from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 from api.dependencies import get_current_user
 from database.mongo_utils import get_db_connection
 from src.main import run_pipeline
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from database.sql_utils import get_assigned_athletes
+import math
+
+def replace_nan_with_none(obj):
+    if isinstance(obj, dict):
+        return {k: replace_nan_with_none(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [replace_nan_with_none(v) for v in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    return obj
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -18,14 +31,85 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "raw_videos")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@router.post("/upload-and-analyze")
-def upload_and_analyze(
-    video: UploadFile = File(...),
-    custom_name: Optional[str] = Form(None),
+class ProcessVideoRequest(BaseModel):
+    secure_url: str
+    custom_name: Optional[str] = None
+    athlete_id: Optional[str] = None
+
+@router.get("/upload-signature")
+def get_signature(current_user: Dict[str, Any] = Depends(get_current_user)):
+    from database.cloud_storage import get_upload_signature
+    sig = get_upload_signature()
+    if not sig:
+        raise HTTPException(status_code=500, detail="Cloudinary not configured")
+    return sig
+
+@router.post("/process-video")
+@limiter.limit("10/hour")
+def process_video_endpoint(
+    request: Request,
+    payload: ProcessVideoRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    athlete_id = current_user["user_id"]
+    user_id = current_user["user_id"]
     
+    if payload.athlete_id:
+        if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Only coaches or admins can upload videos on behalf of athletes")
+        
+        assigned = get_assigned_athletes(user_id)
+        is_assigned = any(str(ath["id"]) == str(payload.athlete_id) for ath in assigned)
+        if not is_assigned and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Athlete is not assigned to your roster")
+        target_athlete_id = str(payload.athlete_id)
+    else:
+        target_athlete_id = str(user_id)
+        
+    final_video_name = payload.custom_name.strip() if payload.custom_name and payload.custom_name.strip() else "Direct_Upload_Video"
+    
+    from database import mongo_utils
+    session_id = mongo_utils.generate_session_id()
+    
+    try:
+        from src.worker.tasks import process_video_task
+        task = process_video_task.delay(
+            file_path=payload.secure_url, 
+            athlete_id=target_athlete_id, 
+            video_name=final_video_name, 
+            session_id=session_id
+        )
+        return {
+            "message": "Analysis started in background",
+            "session_id": session_id,
+            "task_id": task.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
+
+@router.post("/upload-and-analyze")
+@limiter.limit("10/hour")
+async def upload_and_analyze(
+    request: Request,
+    video: UploadFile = File(...),
+    custom_name: Optional[str] = Form(None),
+    athlete_id: Optional[str] = Form(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    user_id = current_user["user_id"]
+    
+    # If athlete_id is provided, confirm coach authorization
+    if athlete_id:
+        if "coach" not in current_user["roles"] and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Only coaches or admins can upload videos on behalf of athletes")
+        
+        assigned = get_assigned_athletes(user_id)
+        is_assigned = any(str(ath["id"]) == str(athlete_id) for ath in assigned)
+        if not is_assigned and "admin" not in current_user["roles"]:
+            raise HTTPException(status_code=403, detail="Athlete is not assigned to your roster")
+        target_athlete_id = str(athlete_id)
+    else:
+        target_athlete_id = str(user_id)
+
     if not video.filename.endswith(('.mp4', '.mov', '.avi')):
         raise HTTPException(status_code=400, detail="Invalid video format")
         
@@ -36,29 +120,58 @@ def upload_and_analyze(
     safe_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
-    # Save video temporarily
+    from database import mongo_utils
+    session_id = mongo_utils.generate_session_id()
+
+    # Check file size (500MB limit)
+    MAX_FILE_SIZE_MB = 500
+    MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+    
+    video_bytes = await video.read()
+    if len(video_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB."
+        )
+
+    # Save video temporarily on Render disk
     try:
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(video.file, buffer)
+            buffer.write(video_bytes)
+            
+        # Upload to Cloudinary for distributed processing
+        from database.cloud_storage import upload_video
+        secure_url = upload_video(file_path, public_id=f"raw_{session_id}")
+        
+        # If upload succeeded, cleanup the local Render disk and pass the URL instead
+        if secure_url and os.path.exists(file_path):
+            os.remove(file_path)
+            file_path = secure_url
+            
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save video: {str(e)}")
-
-    # Run pipeline
-    try:
-        result = run_pipeline(athlete_id=athlete_id, video_name=final_video_name, source_path=file_path)
-        return {
-            "message": "Analysis complete",
-            "session_id": result["session_id"],
-            "video_name": final_video_name,
-            "risk_data": result["risk_data"],
-            "video_url": result["annotated_video_url"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
-    finally:
-        # Clean up the temporary video file, whether the pipeline succeeded or failed
         if os.path.exists(file_path):
             os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Failed to process video upload: {str(e)}")
+
+    # Enqueue Celery Task
+    try:
+        from src.worker.tasks import process_video_task
+        task = process_video_task.delay(
+            file_path=file_path, 
+            athlete_id=target_athlete_id, 
+            video_name=final_video_name, 
+            session_id=session_id
+        )
+        return {
+            "message": "Analysis started in background",
+            "session_id": session_id,
+            "task_id": task.id
+        }
+    except Exception as e:
+        # Don't try to delete URL strings
+        if not file_path.startswith("http") and os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
 
 @router.get("/history")
 def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -66,22 +179,30 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_db_connection()
     sessions_col = db["sessions"]
     
-    # Exclude key_moments to save bandwidth for the history list
     sessions = list(sessions_col.find(
-        {"athlete_id": athlete_id}, 
-        {"key_moments": 0}
+        {"athlete_id": athlete_id}
     ).sort("created_at", -1))
     
-    # Clean up ObjectIds and attach risk data
+    session_ids = [s["session_id"] for s in sessions]
+    
+    # Batch queries instead of N+1
+    risk_scores = {
+        doc["session_id"]: doc.get("risk_data", {})
+        for doc in db["risk_scores"].find({"session_id": {"$in": session_ids}})
+    }
+    
+    bio_data_docs = {
+        doc["session_id"]: doc.get("summary", {})
+        for doc in db["biomechanics_data"].find({"session_id": {"$in": session_ids}})
+    }
+    
+    # Clean up ObjectIds and attach risk data and biomechanics
     for s in sessions:
         s["_id"] = str(s["_id"])
-        risk_score = db["risk_scores"].find_one({"session_id": s["session_id"]})
-        if risk_score:
-            s["risk_data"] = risk_score.get("risk_data", {})
-        else:
-            s["risk_data"] = {}
+        s["risk_data"] = risk_scores.get(s["session_id"], {})
+        s["biomechanics"] = bio_data_docs.get(s["session_id"], {})
         
-    return sessions
+    return replace_nan_with_none(sessions)
 
 @router.get("/{session_id}")
 def get_session(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -111,7 +232,7 @@ def get_session(session_id: str, current_user: Dict[str, Any] = Depends(get_curr
     else:
         session["biomechanics"] = {}
         
-    return session
+    return replace_nan_with_none(session)
 
 @router.delete("/{session_id}")
 def delete_session(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -193,8 +314,9 @@ def download_analysis_report(session_id: str, current_user: Dict[str, Any] = Dep
     )
 
 @router.get("/{session_id}/recommendation")
-def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     from database.mongo_utils import get_full_report
+    from fastapi.concurrency import run_in_threadpool
     
     # 1. Check if the report already exists in MongoDB
     report_data = get_full_report(session_id)
@@ -205,7 +327,7 @@ def get_recommendation(session_id: str, current_user: Dict[str, Any] = Depends(g
     # 2. If it doesn't exist, we must generate it using the LLM engine
     try:
         from src.recommendations.engine import run_engine
-        run_engine(session_id)
+        await run_in_threadpool(run_engine, session_id)
         
         # Now fetch it again since it should be saved
         report_data = get_full_report(session_id)

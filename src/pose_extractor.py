@@ -7,7 +7,10 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from config import LANDMARK_NAMES, CSV_OUTPUT_DIR, ANNOTATED_VIDEO_DIR, ANNOTATED_IMAGES_DIR
+from src.config import LANDMARK_NAMES, CSV_OUTPUT_DIR, ANNOTATED_VIDEO_DIR, ANNOTATED_IMAGES_DIR, RAW_VIDEOS_DIR, MODEL_PATH
+from src.logger import get_logger
+
+logger = get_logger("pose_extractor")
 
 
 def choose_input_source_interactively():
@@ -33,7 +36,7 @@ def choose_input_source_interactively():
 
     # --- Choice 1: list existing videos in the folder ---
     video_extensions = (".mp4", ".mov", ".avi", ".mkv")
-    folder = "data/raw_videos"
+    folder = RAW_VIDEOS_DIR
 
     if not os.path.isdir(folder):
         raise FileNotFoundError(f"Folder not found: {folder}. Create it and add a video first.")
@@ -72,7 +75,10 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
     """
 
     # --- Set up MediaPipe Pose ---
-    base_options = python.BaseOptions(model_asset_path='models/pose_landmarker_full.task')
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model file not found at {MODEL_PATH}. Please ensure the model is downloaded.")
+        
+    base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=vision.RunningMode.VIDEO,
@@ -106,25 +112,13 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
         fourcc = cv2.VideoWriter_fourcc(*"avc1")
         video_writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
-    # --- Setup Key Moment Capture ---
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    key_frame_indices = []
-    if total_frames > 0:
-        key_frame_indices = [0, total_frames // 4, total_frames // 2, total_frames * 3 // 4]
-    elif not is_webcam:
-        # Fallback if frame count is missing but it's a file
-        key_frame_indices = [0, 30, 60, 90]
-        
-    os.makedirs(ANNOTATED_IMAGES_DIR, exist_ok=True)
-    key_image_paths = []
-
     all_frames_data = []  # this list holds one dict per frame -> becomes the CSV rows
     frame_number = 0
 
     if is_webcam:
-        print("Webcam started. Press 'q' in the video window to stop recording.")
+        logger.info("Webcam started. Press 'q' in the video window to stop recording.")
     else:
-        print(f"Processing video: {source}")
+        logger.info(f"Processing video: {source}")
 
     while True:
         success, frame = cap.read()
@@ -197,17 +191,16 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
         if save_annotated_video:
             video_writer.write(frame)
 
-        # Save key moment images
-        if frame_number in key_frame_indices and len(key_image_paths) < 4:
-            img_path = os.path.join(ANNOTATED_IMAGES_DIR, f"{video_name}_frame_{frame_number}.jpg")
-            cv2.imwrite(img_path, frame)
-            key_image_paths.append(img_path)
 
-        # Show a live preview window (useful for webcam, harmless for files too)
-        cv2.imshow("Pose Extraction - press 'q' to stop", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            print("Stopped by user (pressed 'q').")
-            break
+        # Show a live preview window only if explicitly debugging or using webcam
+        if os.environ.get("DEBUG_PREVIEW") == "1" or is_webcam:
+            try:
+                cv2.imshow("Pose Extraction - press 'q' to stop", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    logger.info("Stopped by user (pressed 'q').")
+                    break
+            except Exception as e:
+                logger.warning(f"Could not show preview window (likely headless environment): {e}")
 
         frame_number += 1
 
@@ -215,12 +208,15 @@ def extract_landmarks_from_video(source, is_webcam: bool = False, save_annotated
     cap.release()
     if video_writer is not None:
         video_writer.release()
-    cv2.destroyAllWindows()
+    try:
+        cv2.destroyAllWindows()
+    except Exception:
+        pass  # Fails in headless OpenCV environments
     pose.close()
 
-    print(f"Finished processing. Total frames: {frame_number}")
+    logger.info(f"Finished processing. Total frames: {frame_number}")
     
-    return all_frames_data, key_image_paths
+    return all_frames_data
 
 
 def save_to_csv(frames_data: list, source: str, is_webcam: bool = False, video_name: str = None) -> str:
@@ -235,7 +231,7 @@ def save_to_csv(frames_data: list, source: str, is_webcam: bool = False, video_n
     df = pd.DataFrame(frames_data)
     df.to_csv(csv_path, index=False)
 
-    print(f"Saved landmarks CSV to: {csv_path}")
+    logger.info(f"Saved landmarks CSV to: {csv_path}")
     return csv_path
 
 
@@ -259,7 +255,7 @@ if __name__ == "__main__":
         # No flags given at all -> ask the user interactively
         source, is_webcam = choose_input_source_interactively()
 
-    frames_data = extract_landmarks_from_video(
+    frames_data, key_image_paths = extract_landmarks_from_video(
         source, is_webcam=is_webcam, save_annotated_video=not args.no_annotated_video
     )
     save_to_csv(frames_data, source, is_webcam=is_webcam)

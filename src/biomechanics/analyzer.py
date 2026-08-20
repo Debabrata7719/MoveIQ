@@ -21,17 +21,21 @@ import sys
 import os
 import argparse
 
+from src.logger import get_logger
+logger = get_logger("biomechanics_analyzer")
+
 # Add the 'src' directory to path (for config imports)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Add the project root to path (for database imports)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR
+from src.config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR
 
 try:
     from database import mongo_utils
+    MONGO_AVAILABLE = True
 except ImportError:
-    pass
+    MONGO_AVAILABLE = False
 
 
 from biomechanics.calculators import calculate_joint_angles_and_symmetry, calculate_trunk_valgus_and_stability, calculate_alignment_balance_stride, calculate_range_of_motion
@@ -61,21 +65,32 @@ def save_summary_csv(summary_df: pd.DataFrame, video_name: str) -> str:
     return path
 
 
-def run_biomechanics_only(video_name: str, athlete_id: str, session_id: str) -> str:
-    """Reads existing landmarks CSV and calculates biomechanics. Returns video_name."""
+def run_biomechanics_only(video_name: str, athlete_id: str, session_id: str, frames_data: list = None) -> str:
+    """Reads existing landmarks CSV (or uses in-memory frames_data) and calculates biomechanics. Returns video_name."""
     
     # Save the initial session document to MongoDB
-    try:
+    if MONGO_AVAILABLE:
         mongo_utils.save_session(session_id, athlete_id, video_name, "Processing Biomechanics")
-    except NameError:
-        pass # mongo_utils not imported
         
-    landmarks_path = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_landmarks.csv")
+    if frames_data is not None:
+        landmarks_df = pd.DataFrame(frames_data)
+    else:
+        landmarks_path = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_landmarks.csv")
+        
+        if not os.path.exists(landmarks_path):
+            raise FileNotFoundError(f"Landmarks file not found: {landmarks_path}. Run pose_extractor.py first.")
+            
+        landmarks_df = pd.read_csv(landmarks_path)
+
+    # --- Clean up missing landmarks ---
+    # Interpolate short gaps (up to 5 frames) to avoid jerky data when tracking is briefly lost.
+    landmarks_df = landmarks_df.interpolate(method='linear', limit=5)
+    # Drop rows that still have NaNs (e.g., person entirely missing or long gaps)
+    landmarks_df = landmarks_df.dropna(subset=['left_hip_x'])
     
-    if not os.path.exists(landmarks_path):
-        raise FileNotFoundError(f"Landmarks file not found: {landmarks_path}. Run pose_extractor.py first.")
-        
-    landmarks_df = pd.read_csv(landmarks_path)
+    if landmarks_df.empty:
+        logger.error("No valid landmarks found in the video. Cannot calculate biomechanics.")
+        raise ValueError("No valid landmarks found. Ensure the subject is clearly visible.")
 
     # --- Step 2: Biomechanical analysis ---
     biomechanics_df = calculate_joint_angles_and_symmetry(landmarks_df)
@@ -93,20 +108,18 @@ def run_biomechanics_only(video_name: str, athlete_id: str, session_id: str) -> 
     )
 
     biomechanics_path = save_biomechanics_csv(biomechanics_df, video_name)
-    print(f"Saved biomechanics CSV to: {biomechanics_path}")
+    logger.info(f"Saved biomechanics CSV to: {biomechanics_path}")
 
     # --- Step 2b: Range of Motion + symmetry averages (one-row summary) ---
     summary_df = calculate_range_of_motion(biomechanics_df)
     summary_path = save_summary_csv(summary_df, video_name)
-    print(f"Saved summary CSV to: {summary_path}")
+    logger.info(f"Saved summary CSV to: {summary_path}")
     
     # Save biomechanics data to MongoDB
-    try:
-        frames_data = biomechanics_df.to_dict(orient="records")
-        summary_data = summary_df.iloc[0].to_dict()
+    if MONGO_AVAILABLE:
+        frames_data = biomechanics_df.replace({np.nan: None}).to_dict(orient="records")
+        summary_data = summary_df.replace({np.nan: None}).iloc[0].to_dict()
         mongo_utils.save_biomechanics_data(session_id, frames_data, summary_data)
-    except NameError:
-        pass # mongo_utils not imported
     
     return video_name
 

@@ -1,6 +1,7 @@
 import io
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
+from api.utils.rate_limiter import limiter
 from typing import Dict, Any
 from api.dependencies import get_current_user
 from database.mongo_utils import get_db_connection
@@ -38,7 +39,8 @@ def get_history(current_user: Dict[str, Any] = Depends(get_current_user)):
     return history
 
 @router.post("/{session_id}/generate")
-def generate_recommendations(session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+@limiter.limit("5/hour")
+def generate_recommendations(request: Request, session_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     athlete_id = current_user["user_id"]
     
     # 1. Verify session exists and belongs to user

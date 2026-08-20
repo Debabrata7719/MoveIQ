@@ -4,6 +4,7 @@ import os
 import argparse
 import pandas as pd
 import sys
+import json
 import os
 
 # Add the 'src' directory to path (for config imports)
@@ -11,13 +12,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Add the project root to path (for database imports)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR, RISK_SCORE_OUTPUT_DIR
+from src.config import CSV_OUTPUT_DIR, SUMMARY_OUTPUT_DIR, RISK_SCORE_OUTPUT_DIR
 
 try:
     from database import mongo_utils
+    MONGO_AVAILABLE = True
 except ImportError:
-    pass
+    MONGO_AVAILABLE = False
 
+
+from src.logger import get_logger
+
+logger = get_logger("risk_scoring_engine")
 
 from risk_scoring.rules import (
     calculate_biomechanical_deviation_score,
@@ -25,8 +31,8 @@ from risk_scoring.rules import (
     calculate_fatigue_score,
     calculate_injury_history_score,
     calculate_training_load_score,
-    calculate_demographics_modifier,
-    calculate_sport_modifier,
+    get_demographics_flags,
+    get_sport_flags,
     get_risk_category,
     calculate_movement_quality_score,
     calculate_biomechanical_efficiency_score,
@@ -34,19 +40,29 @@ from risk_scoring.rules import (
 )
 
 def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: bool = False):
-    # --- Load the input files ---
-    summary_path = os.path.join(SUMMARY_OUTPUT_DIR, f"{video_name}_summary.csv")
-    biomechanics_path = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_biomechanics.csv")
-
-    summary_df = pd.read_csv(summary_path)
-    biomechanics_df = pd.read_csv(biomechanics_path)
+    # --- Load the input data ---
+    data_loaded = False
+    if MONGO_AVAILABLE and session_id:
+        try:
+            bio_data = mongo_utils.get_biomechanics_data(session_id)
+            summary_df = pd.DataFrame([bio_data["summary"]])
+            biomechanics_df = pd.DataFrame(bio_data["frames"])
+            data_loaded = True
+        except Exception as e:
+            logger.warning(f"MongoDB biomechanics data not found ({e}), falling back to CSV...")
+            
+    if not data_loaded:
+        summary_path = os.path.join(SUMMARY_OUTPUT_DIR, f"{video_name}_summary.csv")
+        biomechanics_path = os.path.join(CSV_OUTPUT_DIR, f"{video_name}_biomechanics.csv")
+        summary_df = pd.read_csv(summary_path)
+        biomechanics_df = pd.read_csv(biomechanics_path)
     
     # Load athlete profile from MongoDB instead of CSV
-    try:
+    if MONGO_AVAILABLE:
         profile_dict = mongo_utils.get_athlete_profile(athlete_id)
         profile_row = pd.Series(profile_dict)
-    except NameError:
-        print("mongo_utils not imported, falling back to dummy profile")
+    else:
+        logger.warning("mongo_utils not imported, falling back to dummy profile")
         profile_row = pd.Series({"has_previous_injury": "No", "training_intensity": "Medium", "weekly_training_sessions": 3})
 
     summary_row = summary_df.iloc[0]     # one row per video
@@ -67,10 +83,10 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
         + fatigue_score * 0.10
     )
     
-    demo_modifier, demo_flags = calculate_demographics_modifier(profile_row)
-    sport_modifier, sport_flags = calculate_sport_modifier(profile_row)
+    demo_flags = get_demographics_flags(profile_row)
+    sport_flags = get_sport_flags(profile_row)
     
-    final_score = raw_final_score * demo_modifier * sport_modifier
+    final_score = raw_final_score
     final_score = max(0, min(100, final_score))
     
     risk_category = get_risk_category(final_score)
@@ -82,10 +98,22 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
 
     all_flags = deviation_flags + asymmetry_flags + fatigue_flags + injury_flags + training_flags + demo_flags + sport_flags
 
+    # Determine valgus severity qualitatively instead of using fake geometric degrees
+    left_valgus_max = abs(biomechanics_df["left_knee_valgus"]).max() if "left_knee_valgus" in biomechanics_df.columns else 0
+    right_valgus_max = abs(biomechanics_df["right_knee_valgus"]).max() if "right_knee_valgus" in biomechanics_df.columns else 0
+    peak_valgus_px = max(left_valgus_max, right_valgus_max)
+    
+    if peak_valgus_px < 0.03:
+        valgus_severity = "Low"
+    elif peak_valgus_px < 0.06:
+        valgus_severity = "Moderate"
+    else:
+        valgus_severity = "High"
+
     # --- Build the result row ---
     result = {
         "video_name": video_name,
-        "athlete_id": profile_row.get("athlete_id", "unknown"),
+        "athlete_id": athlete_id,
         "biomechanical_deviation_score": round(deviation_score, 1),
         "asymmetry_score": round(asymmetry_score, 1),
         "fatigue_score": round(fatigue_score, 1),
@@ -96,7 +124,8 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
         "movement_quality_score": movement_quality_score,
         "biomechanical_efficiency_score": biomechanical_efficiency_score,
         "overall_health_score": overall_health_score,
-        "flagged_issues": " | ".join(all_flags) if all_flags else "None",
+        "valgus_severity": valgus_severity,
+        "flagged_issues": all_flags if all_flags else [],
     }
 
     result_df = pd.DataFrame([result])
@@ -106,10 +135,29 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
     result_df.to_csv(output_path, index=False)
 
     # Save to MongoDB
-    try:
+    if MONGO_AVAILABLE:
         mongo_utils.save_risk_score(session_id, athlete_id, result)
-    except NameError:
-        pass # mongo_utils not imported
+        
+        # Phase 1: High/Critical Risk Alert (System -> Coach)
+        if "High" in risk_category or "Critical" in risk_category:
+            from database.sql_utils import get_athlete_coach, get_user_by_id
+            coach_data = get_athlete_coach(int(athlete_id))
+            if coach_data and "coach_email" in coach_data:
+                from database.sql_utils import get_user_by_email
+                coach_user = get_user_by_email(coach_data["coach_email"])
+                if coach_user:
+                    coach_id = coach_user["id"]
+                    athlete_info = get_user_by_id(int(athlete_id))
+                    athlete_name = athlete_info.get("full_name", "An athlete") if athlete_info else "An athlete"
+                    
+                    mongo_utils.insert_notification(
+                        recipient_id=int(coach_id),
+                        notif_type="RISK_ALERT",
+                        idempotency_key=f"risk_alert_{session_id}_{coach_id}",
+                        title=f"{risk_category} Detected",
+                        message=f"{athlete_name} has been flagged as {risk_category}. Please review their assessment immediately.",
+                        action_link=f"/coach-dashboard/athletes/{athlete_id}/sessions/{session_id}"
+                    )
 
     if not quiet:
         # --- Print a readable summary ---
@@ -132,12 +180,12 @@ def run_risk_scoring(video_name: str, athlete_id: str, session_id: str, quiet: b
         print(f"{'='*60}")
         if all_flags:
             for flag in all_flags:
-                clean_flag = flag.replace("_", " ").capitalize()
+                clean_flag = flag["issue"].replace("_", " ").capitalize()
                 print(f"  - {clean_flag}")
         else:
             print("  - No issues flagged.")
 
-        print(f"\nSaved risk score CSV to: {output_path}")
+        logger.info(f"Saved risk score CSV to: {output_path}")
 
     return result_df
 

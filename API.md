@@ -1,88 +1,69 @@
-# Sports Injury Risk Detection API Documentation
+# MoveIQ API Documentation
 
-This document outlines the RESTful API built with **FastAPI** to interact with the core Python data science pipeline.
+This document outlines all available API endpoints, their expected payloads, and required authentication levels. 
 
-## 🚀 Getting Started
-
-Start the server using Uvicorn:
-```bash
-uvicorn api.server:app --reload --port 8000
-```
-Interactive Swagger documentation is automatically available at:
-`http://localhost:8000/docs`
+**Base URL:** `http://localhost:8000/api`
 
 ---
 
-## 🔒 Authentication & Security
+## 1. Authentication (`/auth`)
+Handles all user registration, login, JWT issuance, and password management.
+*All endpoints are rate-limited via SlowAPI.*
 
-All secure endpoints require a **JWT (JSON Web Token)** passed in the HTTP Headers.
-`Authorization: Bearer <your_jwt_token>`
-
-**Security Rule:** The API completely ignores any `athlete_id` passed in request bodies or query parameters. The identity of the user is strictly extracted mathematically from the JWT. This prevents malicious users from querying or uploading videos to another athlete's account.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/auth/send-signup-otp` | `POST` | No | Sends an OTP to email for signup verification (Limit: 3/15m). |
+| `/auth/register` | `POST` | No | Creates a new user. Requires email, password, full_name, valid OTP, and role. |
+| `/auth/login` | `POST` | No | Authenticates user and returns JWT Bearer token. |
+| `/auth/forgot-password` | `POST` | No | Sends OTP for password reset. |
+| `/auth/reset-password` | `POST` | No | Resets password using OTP and new strong password. |
+| `/auth/me` | `GET` | **Yes** | Returns details of the currently authenticated user. |
+| `/auth/account` | `PUT` | **Yes** | Updates user full name and email. |
+| `/auth/password` | `PUT` | **Yes** | Updates password (requires old password verification). |
+| `/auth/google/login` | `GET` | No | Redirects to Google OAuth2 consent screen. |
 
 ---
 
-## 🔗 Endpoints
+## 2. Sessions & Analysis (`/sessions`)
+Handles the upload, tracking, and retrieval of video analyses.
 
-### 1. Authentication (`/api/auth`)
-Handles user registration and login using MySQL and `bcrypt` password hashing.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/sessions/upload-and-analyze` | `POST` | **Yes** | Accepts a video file (max 500MB). Triggers background Celery task. Returns `session_id` and `task_id`. Coaches can upload for assigned athletes using `athlete_id` Form param. |
+| `/sessions/history` | `GET` | **Yes** | Returns a list of all past sessions for the authenticated athlete. Includes optimized batched risk and biomechanics data. |
+| `/sessions/{session_id}` | `GET` | **Yes** | Retrieves full details of a specific session. (Secured: Coach/Admin or owner only). |
+| `/sessions/{session_id}` | `DELETE` | **Yes** | Deletes a session and all related MongoDB artifacts (Biomachanics, Risk Scores, Recommendations). |
+| `/sessions/{session_id}/report/download` | `GET` | **Yes** | Generates and returns a downloadable PDF report of the biomechanical analysis. |
+| `/sessions/{session_id}/recommendation` | `GET` | **Yes** | Asynchronously queries Groq LLM to generate plain-text recommendations based on the risk score. Returns cached version if previously generated. |
 
-- **`POST /api/auth/register`**
-  - **Description**: Registers a new user in the MySQL database.
-  - **Payload**: `{"email": "...", "password": "...", "full_name": "...", "role": "athlete"}`
-  - **Returns**: `{"message": "User created successfully", "user_id": 1}`
+---
 
-- **`POST /api/auth/login`**
-  - **Description**: Authenticates a user and generates a JWT.
-  - **Payload**: `{"email": "...", "password": "..."}`
-  - **Returns**: `{"access_token": "...", "token_type": "bearer", "user": {...}}`
+## 3. WebSockets (`/ws`)
+Handles all real-time communication. *Token must be passed as a query parameter `?token=...`*
 
-- **`GET /api/auth/me`** *(Requires JWT)*
-  - **Description**: Returns the decoded JWT payload of the currently logged-in user.
+| Endpoint | Protocol | Auth Required | Description |
+|----------|----------|---------------|-------------|
+| `/ws/progress/{session_id}` | `WS` | **Yes** | Subscribes to a Redis PubSub channel to receive live JSON updates as the Celery worker progresses through video processing steps. |
+| `/ws/notifications` | `WS` | **Yes** | Global notification channel for the user (e.g., "Analysis Complete", "New Chat Message"). |
+| `/ws/chat` | `WS` | **Yes** | Two-way communication channel. Handles `send_message` and `mark_read` actions. Persists data to MongoDB asynchronously to prevent event-loop blocking. |
 
-- **`PUT /api/auth/account`** *(Requires JWT)*
-  - **Description**: Updates the logged-in user's name and email in the MySQL database.
-  - **Payload**: `{"full_name": "...", "email": "..."}`
+---
 
-- **`PUT /api/auth/password`** *(Requires JWT)*
-  - **Description**: Updates the logged-in user's password in the MySQL database after verifying the old password.
-  - **Payload**: `{"old_password": "...", "new_password": "..."}`
+## 4. Coach Management (`/coach`)
+Specific endpoints for users with the `coach` role.
 
-### 2. Athlete Profiles (`/api/profile`)
-Handles the reading and writing of athlete historical data in MongoDB.
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/coach/athletes` | `GET` | **Yes (Coach)** | Returns a list of all athletes assigned to this coach's code. |
+| `/coach/athletes/search` | `GET` | **Yes (Coach)** | Queries Elasticsearch to perform fuzzy searches across the global athlete directory. |
+| `/coach/assign` | `POST` | **Yes (Coach)** | Assigns an athlete to the coach. |
+| `/coach/sessions/{athlete_id}` | `GET` | **Yes (Coach)** | Allows a coach to view the session history of a specifically assigned athlete. |
 
-- **`GET /api/profile`** *(Requires JWT)*
-  - **Description**: Fetches the logged-in user's profile from the `athlete_profiles` collection.
-  - **Returns**: JSON object containing injury history and training intensity.
+---
 
-- **`POST /api/profile`** | **`PUT /api/profile`** *(Requires JWT)*
-  - **Description**: Upserts the user's profile data (including demographics for advanced risk scoring math) to MongoDB.
-  - **Payload**: `{"has_previous_injury": "Yes", "injury_recency": "6 months ago", "previous_injury_type": "ACL Tear", "training_intensity": "High", "weekly_training_sessions": 5, "age": 25, "gender": "Male", "height": 180, "weight": 75, "sport": "Basketball"}`
+## 5. Webhooks (`/webhooks`)
+Server-to-server endpoints.
 
-### 3. Video Sessions (`/api/sessions`)
-The core bridge to the `src.main` Python pipeline.
-
-- **`POST /api/sessions/upload-and-analyze`** *(Requires JWT)*
-  - **Description**: Accepts a video file, generates a safe unique filename, triggers the AI math pipeline, saves data to MongoDB, uploads the annotated video to Cloudinary, and instantly deletes temporary local files.
-  - **Payload**: `multipart/form-data` with key `video` (file).
-  - **Returns**: `{"session_id": "uuid", "risk_data": {...}, "video_url": "cloudinary_link"}`
-
-- **`GET /api/sessions/history`** *(Requires JWT)*
-  - **Description**: Fetches all past sessions linked to the logged-in athlete.
-  - **Returns**: Array of session JSON objects (newest first).
-
-- **`GET /api/sessions/{session_id}`** *(Requires JWT)*
-  - **Description**: Retrieves a specific session's metadata. Includes authorization checks to ensure the user owns the session (unless they are an admin/coach).
-
-### 4. AI Recommendations (`/api/recommendations`)
-Integrates with LangGraph and Groq LLMs.
-
-- **`POST /api/recommendations/{session_id}/generate`** *(Requires JWT)*
-  - **Description**: Triggers the `src.recommendations.engine` to analyze the specific session's Risk Score and formulate an AI corrective exercise plan. Saves the structured JSON object to MongoDB.
-  - **Returns**: `{"message": "Recommendations generated successfully"}`
-  
-- **`GET /api/recommendations/{session_id}`** *(Requires JWT)*
-  - **Description**: Retrieves the structured JSON data of the AI recommendations for frontend display formatting (contains `one_line_summary`, `categories`, etc.).
-  - **Returns**: JSON recommendation object.
-
-*(Note: The server no longer generates PDFs directly via endpoints. PDF compilation is now handled entirely client-side using React rendering and html-to-image).*
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/webhooks/cloudinary` | `POST` | Implicit | Cloudinary hits this endpoint when background video transformations complete. Updates MongoDB and triggers WebSocket notifications. |

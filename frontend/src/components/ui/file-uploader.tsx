@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, X, FileVideo, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UploadCloud, X, FileVideo, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface FileUploaderProps {
   token?: string;
@@ -14,16 +14,16 @@ interface ToastProps {
 }
 
 const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => (
-  <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-bottom-5 ${
+  <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-bottom-5 ${
     type === 'success' 
-        ? 'bg-emerald-950/80 border-emerald-800 text-emerald-400' 
-        : 'bg-rose-950/80 border-rose-800 text-rose-400'
+        ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+        : 'bg-red-50 border-red-200 text-red-800'
   }`}
     role="alert"
   >
     {type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-    <span className="font-medium text-sm">{message}</span>
-    <button onClick={onClose} className="ml-2 text-slate-400 hover:text-white transition-colors" aria-label="Close">
+    <span className="font-semibold text-sm">{message}</span>
+    <button onClick={onClose} className="ml-2 text-slate-500 hover:text-slate-900 transition-colors" aria-label="Close">
       <X className="w-4 h-4" />
     </button>
   </div>
@@ -39,7 +39,6 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (file: File) => {
-    // Only allow video files
     if (!file.type.startsWith('video/')) {
       setToast({ message: 'Please upload a valid video file (MP4, MOV, AVI)', type: 'error' });
       return;
@@ -104,65 +103,125 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
         onUploadStart();
     }
     
-    // Simulate progress while waiting for the slow video analysis backend
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) return prev;
-        // Slow down progress as it gets closer to 90%
-        const increment = prev < 50 ? 5 : prev < 80 ? 2 : 1;
-        return prev + increment;
-      });
-    }, 500);
-    
     try {
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      if (customName.trim()) {
-        formData.append('custom_name', customName.trim());
+      // 1. Get Signature
+      const sigResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/upload-signature`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!sigResponse.ok) {
+        throw new Error('Failed to get upload signature');
       }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/upload-and-analyze`, {
+      const sigData = await sigResponse.json();
+      
+      // 2. Upload directly to Cloudinary
+      const cloudinaryFormData = new FormData();
+      cloudinaryFormData.append('file', selectedFile);
+      cloudinaryFormData.append('api_key', sigData.api_key);
+      cloudinaryFormData.append('timestamp', sigData.timestamp);
+      cloudinaryFormData.append('signature', sigData.signature);
+      cloudinaryFormData.append('folder', 'sports_injury_raw_videos');
+      
+      setProgress(10);
+      const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/video/upload`, {
+        method: 'POST',
+        body: cloudinaryFormData
+      });
+      
+      if (!cloudRes.ok) {
+        throw new Error('Direct upload to cloud failed');
+      }
+      const cloudData = await cloudRes.json();
+      setProgress(50);
+      
+      // 3. Trigger processing on backend
+      const processRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/process-video`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: formData,
+        body: JSON.stringify({
+          secure_url: cloudData.secure_url,
+          custom_name: customName.trim() || undefined
+        }),
       });
 
-      clearInterval(progressInterval);
-      setProgress(100); 
-      
-      const data = await response.json();
+      const data = await processRes.json();
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to analyze video');
+      if (!processRes.ok) {
+        throw new Error(data.detail || 'Failed to start analysis');
       }
 
-      setToast({ message: 'Video analyzed successfully!', type: 'success' });
-      
-      if (onUploadSuccess) {
-        // Add a slight delay before triggering success to let the user see 100%
-        setTimeout(() => {
-          onUploadSuccess(data);
-        }, 500);
-      }
+      // WebSocket listener
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
+      const wsHost = apiUrl.replace(/^https?:\/\//, '');
+      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}?token=${token}`);
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        
+        if (msg.progress) {
+          setProgress(msg.progress);
+        }
+        
+        if (msg.step === "Analysis Complete") {
+          ws.close();
+          setToast({ message: 'Video analyzed successfully!', type: 'success' });
+          
+          try {
+            // Fetch the final session data
+            const res = await fetch(`${apiUrl}/api/sessions/${data.session_id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const sessionData = await res.json();
+              if (onUploadSuccess) {
+                setTimeout(() => onUploadSuccess(sessionData), 500);
+              }
+            }
+          } catch (e) {
+             console.error("Failed to fetch final session", e);
+          } finally {
+            setUploading(false);
+          }
+        }
+        
+        if (msg.step === "ERROR") {
+          ws.close();
+          setToast({ message: msg.error || 'Pipeline failed', type: 'error' });
+          setUploading(false);
+          setProgress(0);
+        }
+      };
+
+      ws.onerror = () => {
+        setToast({ message: 'WebSocket connection failed.', type: 'error' });
+        setUploading(false);
+        setProgress(0);
+      };
+
+      ws.onclose = (event) => {
+        if (!event.wasClean && uploading) {
+          setToast({ message: 'Disconnected from progress tracking.', type: 'error' });
+          setUploading(false);
+          setProgress(0);
+        }
+      };
+
     } catch (err: any) {
-      clearInterval(progressInterval);
       setToast({ message: err.message, type: 'error' });
       setProgress(0);
-    } finally {
-      setTimeout(() => {
-        setUploading(false);
-      }, 500);
+      setUploading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto">
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl p-8 w-full animate-in fade-in zoom-in duration-300">
-        <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white tracking-tight mb-1">Upload Athlete Video</h2>
-            <p className="text-sm font-medium text-slate-400">MP4, MOV, AVI up to 100MB</p>
+    <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto text-left">
+      <div className="bg-white border border-[#c3c6d7] rounded-2xl shadow-sm p-6 w-full animate-in fade-in zoom-in duration-300 text-[#191c1f]">
+        <div className="text-center mb-6">
+            <h2 className="text-[20px] font-bold text-[#191c1f] tracking-tight mb-1">Upload Athlete Video</h2>
+            <p className="text-sm font-medium text-[#434654]">MP4, MOV, AVI up to 100MB</p>
         </div>
 
         <input
@@ -177,8 +236,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
         <div
           className={`w-full flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-all duration-300 mb-6 cursor-pointer ${
             isDragging 
-                ? 'border-cyan-500 bg-cyan-950/20' 
-                : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
+                ? 'border-[#004ccd] bg-[#faf8ff]' 
+                : 'border-[#c3c6d7] bg-[#faf8ff] hover:border-[#004ccd]'
           }`}
           style={{ minHeight: 160 }}
           onClick={handleButtonClick}
@@ -187,30 +246,31 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
           onDragLeave={handleDragLeave}
         >
           <div className="flex flex-col items-center py-6 pointer-events-none">
-            <div className={`p-4 rounded-full mb-4 transition-colors duration-300 ${isDragging ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-800 text-slate-400'}`}>
+            <div className={`p-4 rounded-full mb-3 transition-colors duration-300 ${isDragging ? 'bg-[#faf8ff] text-[#004ccd]' : 'bg-[#f3f3fe] text-[#00379b]'}`}>
                 <UploadCloud className={`w-8 h-8 ${isDragging ? 'animate-bounce' : ''}`} />
             </div>
-            <span className="text-slate-300 font-medium text-sm">
-              Drag & drop video here or <span className="text-cyan-400 hover:text-cyan-300 transition-colors">Browse</span>
+            <span className="text-[#191c1f] font-semibold text-sm">
+              Drag &amp; drop video here or <span className="text-[#004ccd] hover:underline transition-colors">Browse</span>
             </span>
           </div>
         </div>
+
         {selectedFile && (
           <div className="mb-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Selected Video</div>
-            <div className="flex items-center gap-4 bg-slate-800/50 border border-slate-700 rounded-xl p-3">
-              <div className="p-2 bg-slate-900 rounded-lg text-cyan-400">
+            <div className="text-[11px] font-bold text-[#434654] uppercase tracking-wider mb-2">Selected Video</div>
+            <div className="flex items-center gap-4 bg-[#faf8ff] border border-[#c3c6d7] rounded-xl p-3">
+              <div className="p-2 bg-[#f3f3fe] rounded-lg text-[#004ccd]">
                 <FileVideo className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-200 truncate pr-4">{selectedFile.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{formatFileSize(selectedFile.size)}</p>
+                <p className="text-sm font-semibold text-[#191c1f] truncate pr-4">{selectedFile.name}</p>
+                <p className="text-xs text-[#737686] mt-0.5">{formatFileSize(selectedFile.size)}</p>
               </div>
               <button
                 type="button"
                 onClick={handleRemoveFile}
                 disabled={uploading}
-                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-400/10 rounded-lg transition-colors disabled:opacity-50"
+                className="p-2 text-[#737686] hover:text-[#ba1a1a] hover:bg-[#ffdad6] rounded-lg transition-colors disabled:opacity-50"
                 aria-label="Remove file"
               >
                 <X className="w-4 h-4" />
@@ -218,7 +278,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
             </div>
             
             <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-[#434654] uppercase tracking-wider mb-1.5">
                 Video Name
               </label>
               <input 
@@ -226,7 +286,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="e.g. Morning Sprint Session"
-                className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                className="w-full bg-white border border-[#c3c6d7] rounded-xl px-4 py-2.5 text-[#191c1f] text-sm focus:outline-none focus:border-[#004ccd] focus:ring-2 focus:ring-[#004ccd]/20 transition-all"
                 disabled={uploading}
               />
             </div>
@@ -235,17 +295,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
 
         {uploading && (
           <div className="w-full mb-6 animate-in fade-in">
-            <div className="flex justify-between text-xs font-semibold text-slate-400 mb-2">
+            <div className="flex justify-between text-xs font-bold text-[#434654] mb-2">
                 <span>Analyzing Biomechanics...</span>
-                <span className="text-cyan-400">{progress}%</span>
+                <span className="text-[#004ccd]">{progress}%</span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-[#e2e1ed] rounded-full h-1.5 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-300 ease-out relative"
+                className="bg-[#00379b] h-full rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${progress}%` }}
-              >
-                  <div className="absolute top-0 right-0 bottom-0 left-0 bg-white/20 animate-pulse"></div>
-              </div>
+              />
             </div>
           </div>
         )}
@@ -254,18 +312,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
           type="button"
           disabled={!selectedFile || uploading}
           onClick={handleUpload}
-          className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg flex items-center justify-center gap-2
+          className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all duration-300 flex items-center justify-center gap-2
             ${selectedFile && !uploading
-              ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.5)] active:scale-[0.98]'
-              : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'}
+              ? 'bg-[#004ccd] hover:bg-[#003da9] text-white active:scale-[0.99]'
+              : 'bg-[#faf8ff] text-[#737686] cursor-not-allowed border border-[#c3c6d7]'}
           `}
         >
           {uploading ? (
             <>
-                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
                 Processing...
             </>
           ) : (

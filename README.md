@@ -1,165 +1,228 @@
-# Sports Injury Risk Detection
+# MoveIQ - Advanced Sports Injury Risk Assessment Platform
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8%2B-green.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![MoveIQ Banner](https://placehold.co/1200x300/004ccd/FFFFFF?text=MoveIQ+Sports+Injury+Analysis)
 
-An advanced, AI-assisted computer vision pipeline designed to analyze athletic movements (like squats, jumps, etc.), calculate injury risk scores, and provide actionable, personalized recommendations.
-
-## Description
-
-This project provides a fully automated, end-to-end pipeline that bridges the gap between raw video footage and professional-level biomechanical feedback. It is designed to help athletes and coaches identify risky movement patterns before they lead to injuries. 
-
-The system operates in four seamless stages:
-1. **Pose Extraction**: Tracks 33 critical body landmarks frame-by-frame from video or webcam feeds.
-2. **Biomechanical Analysis**: Evaluates joint angles, balance sway, knee valgus, and left-vs-right body asymmetries.
-3. **Risk Scoring Engine**: Merges biomechanics with historical injury data (from MongoDB) to assign a Health Score and Risk Category.
-4. **AI Recommendation Engine**: Uses Large Language Models (LLMs) to translate raw flaws into plain-English and assigns pre-approved corrective exercises.
-
-### Backend Architecture
-This pipeline is designed for seamless web frontend integration:
-- **Stateless Operation**: Intermediate CSV files are automatically deleted after processing to keep the server clean.
-- **Database Persistence**: All biomechanics data, risk scores, and generated reports are stored permanently in **MongoDB**.
-- **Object Storage**: Heavy video files are automatically uploaded to **Cloudinary** and securely linked in the database so your backend never hosts media files directly.
-- **Decoupled Engines**: The heavy LLM processing (Recommendation Engine) runs completely independently of the fast video processing engine.
-- **Demographics-Aware Scoring**: The core risk engine dynamically modifies injury risk using the athlete's exact Height, Weight (BMI), Age, Gender, and Primary Sport.
-
-## Project Structure
-
-Following enterprise software architecture standards, the core logic is cleanly separated into modular components:
-
-```text
-Sports-Injury-Risk-/
-├── data/
-│   ├── profiles/            # Manually defined athlete history CSVs
-│   └── raw_videos/          # Input videos for the pipeline
-├── database/                # MongoDB integration and operations
-├── outputs/                 # Temporary directories (cleaned up automatically)
-├── tests/                   # Pytest automated testing suite
-└── src/
-    ├── main.py              # Main entry point (Runs Step 1)
-    ├── pose_extractor.py    # MediaPipe pose extraction script
-    ├── config.py            # Global thresholds and directory paths
-    ├── biomechanics/        # Pure math calculators and frame analyzers
-    ├── risk_scoring/        # Health/Risk threshold rules and engine
-    └── recommendations/     # LLM prompts and LangGraph orchestration
-├── frontend/                # Next.js / Tailwind React Web Application
-├── api/                     # FastAPI backend bridging the core engine and frontend
-```
-
-## Database Architecture
-
-All persistent data operations are strictly handled by the `database/mongo_utils.py` module. The project uses a NoSQL document-based structure in MongoDB to store pipeline results across four core collections:
-
-1. **`athlete_profiles`**: Stores static user data (e.g., `athlete_id`, `has_previous_injury`, `weekly_training_sessions`, `height`, `weight`, `age`, `gender`, `sport`). This must be populated before processing a video, as the risk engine uses demographics to multiply or penalize risk baselines.
-2. **`sessions`**: Tracks each unique video analysis run with a unique UUID (`session_id`), linking the video name to the athlete.
-3. **`biomechanics`**: Stores the heavy, frame-by-frame joint angle calculations and the overall mathematical summaries (range of motion, valgus).
-4. **`risk_scores`**: Stores the final 0-100 risk score, category, and a list of flagged movement flaws.
-5. **`recommendations`**: Stores the raw AI generated JSON summary, including the core one-line summary and structured corrective exercise categories.
-
-## Installation
-
-1. Clone the repository and navigate into the directory:
-   ```bash
-   git clone <repository-url>
-   cd Sports-Injury-Risk-
-   ```
-
-2. (Optional but recommended) Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
-
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Usage
-
-The pipeline is split into two independent flows to optimize speed and frontend integration.
-
-### Step 1: Process Video & Calculate Risk
-Execute the main script and pass the athlete's ID (for MongoDB linkage) and optionally the name of a video located in your `data/raw_videos` folder:
-
-```bash
-python src/main.py --athlete_id "athlete_001" --video_name sports
-```
-*(If you do not provide `--video_name`, the script will prompt you to select a video or use a live webcam feed).*
-
-The script will:
-1. Process the video and calculate biomechanical flaws.
-2. Pull the athlete's historical data from MongoDB.
-3. Print a fast "Risk Score Report" directly to the terminal.
-4. Securely upload the generated `_annotated.mp4` video to Cloudinary.
-5. Save the risk data and Cloudinary URL to MongoDB and **clean up/delete** all temporary CSV and `.mp4` files on your hard drive.
-
-### Step 2: Generate Premium Recommendations (Optional)
-Once a session is processed, you can generate detailed, AI-driven corrective exercises by running the recommendation engine manually using the Session ID generated in Step 1:
-
-```bash
-python src/recommendations/engine.py --video_name "sports" --session_id "YOUR_SESSION_ID"
-```
-
-The script will:
-1. Query MongoDB for the specific session's risk scores.
-2. Connect to Groq/LangGraph to generate a personalized rehab plan.
-3. Save the full, massive text report string directly to the `full_recommendation_reports` collection in MongoDB for your frontend to download.
-
-## Configuration
-
-- **API Keys & Database**: This project requires a MongoDB instance, a Groq API key, and a Cloudinary account. You must add these to a `.env` file in the root directory:
-  ```env
-  GROQ_API_KEY=your_api_key_here
-  MONGO_URI=mongodb://localhost:27017
-  MONGO_DB_NAME=sports_injury_db
-  CLOUDINARY_URL=cloudinary://your_api_key_here@your_cloud_name
-  ```
-- **Directories and Thresholds**: General configurations, file paths, and joint angle thresholds can be modified in `src/config.py`.
-- **Athlete Profiles**: Athlete history is read from the `athlete_profiles` collection in MongoDB. (Insert a document with `athlete_id`, `has_previous_injury`, `weekly_training_sessions`, etc., before running the pipeline).
-
-## API Backend Integration
-
-The project now includes a high-performance **FastAPI** backend located in the `api/` directory. This acts as a bridge between the core Python logic and your web frontend (React/Next.js).
-
-### Features
-- **JWT Authentication**: Validates users against a MySQL database. Client identity (`athlete_id`) is strictly extracted from the secure token.
-- **REST Endpoints**: Exposes endpoints for uploading videos, generating recommendations, and retrieving profiles.
-- **Client-Side PDFs**: Serves structured JSON to the frontend, which handles dynamically rendering and downloading A4-sized PDF reports natively in the browser via React, `html-to-image`, and `jsPDF`.
-
-To run the API server:
-```bash
-uvicorn api.server:app --reload --port 8000
-```
-Then navigate to `http://localhost:8000/docs` to view the interactive Swagger API documentation. For detailed endpoint information, see [API.md](./API.md).
-
-### Web Frontend (Next.js)
-A complete, Acet Labs-styled web application is located in the `frontend` directory. 
-To launch the frontend dashboard:
-```bash
-cd frontend
-npm install
-npm run dev -- -p 3000
-```
-
-## Testing
-
-This project includes a robust, automated end-to-end test suite that simulates the pipeline without writing any test data to your MongoDB. 
-
-To run the full pipeline test (which safely reroutes all outputs to a `tests/test_outputs` directory):
-```bash
-pytest tests/test_pipeline.py
-```
-
-## Features
-
-- **Automated Video Processing**: Hands-free biomechanical analysis from raw video files or live webcams.
-- **Database Persistence**: Fully integrated with MongoDB to permanently save session data, risk scores, and final textual reports.
-- **Auto-Cleanup**: Intermediate CSV files are automatically wiped after processing to preserve hard drive space.
-- **Detailed Dashboards**: Quickly view an athlete's Overall Health Score, Movement Quality, Biomechanical Efficiency, and Fatigue Levels.
-- **Plain-English Feedback**: AI translates technical, medical jargon into easy-to-understand summaries for coaches and athletes.
-- **Personalized Rehab Plans**: Automatically generated corrective exercise recommendations based on specific detected flaws.
+MoveIQ is an end-to-end, highly scalable AI-powered platform designed to analyze athletic movements in real-time, predict injury risks, and provide biomechanical feedback to both athletes and coaches. The system relies on advanced machine learning algorithms processed via a distributed background worker system, ensuring a smooth, non-blocking experience for end users.
 
 ---
-*Disclaimer: This is an AI-assisted movement screening tool based on video pose estimation and rule-based analysis. It is not a medical diagnosis. Please consult a physiotherapist or doctor for professional evaluation and treatment.*
+
+## 🏗️ System Architecture & Data Flow
+
+MoveIQ uses a **Microservice-like architecture** heavily reliant on asynchronous processing.
+
+1. **Client Layer:** Athletes/Coaches upload videos or send chat messages.
+2. **API Layer (FastAPI):** Receives requests, handles authentication (JWT), and performs rate-limiting (SlowAPI). It offloads heavy tasks immediately.
+3. **Queue Layer (Celery & Redis):** High-priority tasks (Emails/OTPs) and Video Processing tasks are placed in distinct queues.
+4. **Storage Layer:** 
+   * **MySQL/PostgreSQL:** Relational data (Users, Roles, Coaching relationships).
+   * **MongoDB:** Unstructured/Heavy data (Biomechanical analysis, AI Reports, Chat histories).
+   * **Elasticsearch:** Fast, fuzzy-searchable athlete profiles for the Coach dashboard.
+5. **Worker Layer:** Python Celery workers process videos, interact with Cloudinary, and call the Groq LLM API for recommendations.
+
+---
+
+## 🎥 End-to-End Video Processing Pipeline
+
+Because analyzing sports footage requires heavy ML operations, MoveIQ is built around a completely non-blocking, asynchronous video pipeline. Here is exactly what happens when a user uploads a video:
+
+1. **Upload & Verification:** The user calls `/api/sessions/upload-and-analyze`. FastAPI intercepts the upload, checks for valid extensions (`.mp4`, `.mov`, `.avi`), and enforces a strict **500MB file size limit**.
+2. **Temporary Disk Buffer:** To free up the network request immediately, the file is buffered to local disk, a MongoDB session is generated, and a Celery background task is enqueued. The API responds to the user in milliseconds.
+3. **Cloud Storage Handoff:** The Celery worker picks up the task and securely uploads the local video to **Cloudinary** for distributed storage. The local disk file is immediately wiped to prevent disk exhaustion.
+4. **AI Biomechanics Analysis:** The worker passes the secure Cloudinary URL to the core ML pipeline. The AI extracts granular metrics (joint angles, biomechanical efficiency, and movement quality scores) frame-by-frame.
+5. **LLM Coaching Insights:** If a high injury risk is detected, the raw numbers are passed securely to a **Groq-powered LangGraph** engine. This acts as a virtual AI Coach, translating complex numbers into actionable, plain-English advice.
+6. **Real-Time WebSocket Feedback:** Throughout this entire background process, the worker publishes live JSON updates to a **Redis Pub/Sub** channel. The frontend listens to these updates via WebSockets (`/api/ws/progress`), presenting a smooth, live progress bar to the user.
+7. **Elasticsearch Sync:** Once complete, the final Risk Category and scores are committed to MongoDB, and an asynchronous `sync_athlete_to_es` task is fired to update the athlete's profile in Elasticsearch, updating the Coach's dashboard instantly.
+
+---
+
+## ⚡ Scalability & Capacity Limitations
+
+MoveIQ was explicitly engineered to handle high concurrent loads without crashing. Here is a breakdown of system capacity:
+
+### 1. The API & WebSocket Layer (High Capacity)
+* **Capacity:** ~5,000 to 10,000+ concurrent users.
+* **Explanation:** FastAPI runs on `uvicorn` and handles basic CRUD operations asynchronously. Database queries to MongoDB use `$in` bulk queries to prevent N+1 bottlenecks. Redis handles WebSocket chat and progress bars, easily supporting thousands of live connections on a basic server.
+
+### 2. Video Upload Queue (High Capacity, Hardware Bound)
+* **Capacity:** ~1,000+ queued users simultaneously.
+* **Explanation:** The API handles uploads quickly, limits them to 500MB, saves them to a temporary disk, and enqueues the task. The only limit is server network bandwidth and temporary disk storage.
+
+### 3. AI Processing & Recommendation Engine (The Bottleneck)
+* **Capacity:** Bound by third-party APIs (Cloudinary/Groq) and Worker count.
+* **Explanation:** While thousands of users can *upload*, the processing speed is limited. If Groq limits you to 30 requests/minute, only 30 users per minute will get their final AI recommendations. If you have 2 Celery workers, only 2 videos are processed simultaneously. The rest wait safely in the Redis queue.
+
+---
+
+## 🛠️ Technology Stack
+
+* **Backend Framework:** FastAPI (Python 3.10+)
+* **Distributed Task Queue:** Celery with Redis Broker
+* **In-Memory Cache & PubSub:** Redis (for WebSockets & OTPs)
+* **Relational Database:** MySQL (User Auth, Roles, Relationships)
+* **NoSQL Database:** MongoDB (AI Reports, Biomechanics, Chat)
+* **Search Engine:** Elasticsearch (Fuzzy searching for Coach Dashboard)
+* **AI/LLM Provider:** Groq / LangGraph (Rapid recommendation generation)
+* **Media Storage:** Cloudinary
+* **Testing:** Pytest with extensive `unittest.mock` usage
+
+---
+
+## 🚧 Challenges Faced & Solutions
+
+Building a hybrid AI/Video processing app at this scale introduced several unique architectural challenges:
+
+1. **The AI Processing Bottleneck (Event Loop Blocking)**
+   * *Challenge:* Synchronously calling the Groq LLM API blocked FastAPI's event loop, causing the entire server to freeze for 5-15 seconds per request.
+   * *Solution:* We moved the AI LLM pipeline into asynchronous executors (`run_in_threadpool`) and shifted video processing entirely to Celery workers.
+2. **N+1 Database Queries in the History Endpoint**
+   * *Challenge:* Fetching 50 sessions for an athlete resulted in 101 synchronous MongoDB queries, killing dashboard load times.
+   * *Solution:* Re-wrote queries to use MongoDB `$in` batch aggregations, reducing 100+ queries to exactly 3 queries.
+3. **Database Race Conditions & Lost Connections**
+   * *Challenge:* Celery workers were dropping MySQL connections after being idle. `sys.exit()` calls in database utilities were killing the worker process entirely.
+   * *Solution:* Implemented exponential backoff and retry policies using Celery's `autoretry_for`. Replaced `sys.exit()` with proper Python Exceptions (`ConnectionFailure`).
+4. **WebSocket Authentication Vulnerabilities**
+   * *Challenge:* Anyone could connect to a WebSocket progress channel if they guessed the `session_id`.
+   * *Solution:* Implemented strict JWT token verification directly inside the WebSocket connection handshake.
+
+---
+
+## 🌟 Key Features
+
+* **Role-Based Access Control (RBAC):** Distinct dashboards for Athletes vs. Coaches.
+* **Live WebSockets:** Real-time progress bars for video analysis and real-time chat between coaches and athletes.
+* **AI Biomechanics:** Detailed PDF reports and Groq-powered textual recommendations generated from uploaded sports footage.
+* **Automated Notifications:** Cron-jobs (Celery Beat) automatically scan the database to find inactive athletes and send them reassessment reminders.
+* **Rate Limiting:** IP-based protection using `slowapi` to prevent spam on auth and upload endpoints.
+
+---
+
+## 🐳 Docker Setup (Recommended)
+
+The entire MoveIQ stack — API, Celery Worker, Celery Beat, Redis, Elasticsearch, and the Next.js frontend — can be started with a **single command** using Docker Compose.
+
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+
+### Docker Architecture
+
+Two custom Docker images are used:
+
+| Image | Dockerfile | Used By |
+|---|---|---|
+| Backend | `Dockerfile` (root) | `api`, `worker`, `beat` containers — all share one image, different startup commands |
+| Frontend | `frontend/Dockerfile` | `frontend` container — Next.js 3-stage build |
+
+Plus official images for the local databases: `redis:7-alpine`, `elasticsearch:8.13.0`, `mysql:8.0`, and `mongo:6.0`.
+
+### Step 1 — Configure Environment
+
+```bash
+# Copy the Docker-specific env template
+cp .env.docker.example .env.docker
+```
+
+Open `.env.docker` and fill in your real cloud API credentials (Groq, Gemini, Cloudinary, etc.). The Docker networking links (like `DB_HOST=mysql`) are already correctly configured for you.
+
+> **Note:** `.env.docker` is in `.gitignore` — your secrets will never be pushed to GitHub.
+
+### Step 2 — Build & Start All Services
+
+```bash
+docker-compose up --build
+```
+
+This single command:
+1. Builds the backend Python image (installs all `requirements.txt`)
+2. Builds the frontend Next.js image (3-stage optimized build)
+3. Starts **7 completely local containers** (Redis, Elasticsearch, MySQL, MongoDB, API, Workers, Frontend)
+4. *Automatically* initializes your MySQL database schema using `database/init.sql`
+
+### Step 3 — Verify Everything Is Running
+
+| Service | URL |
+|---|---|
+| Next.js Frontend | http://localhost:3000 |
+| FastAPI Backend | http://localhost:8000 |
+| API Swagger Docs | http://localhost:8000/docs |
+| Elasticsearch | http://localhost:9200 |
+| MongoDB | localhost:27017 |
+| MySQL | localhost:3306 |
+| Redis | localhost:6379 |
+
+### Stop Everything
+
+```bash
+docker-compose down          # Stop containers (keeps data)
+docker-compose down -v       # Stop containers AND wipe all volumes (fresh start)
+```
+
+### Named Volumes (Persistent Data)
+
+| Volume | Purpose |
+|---|---|
+| `es_data` | Elasticsearch index data — persists across restarts |
+| `mysql_data` | MySQL relational data — persists across restarts |
+| `mongodb_data` | MongoDB document data — persists across restarts |
+| `temp_uploads` | Shared disk between `api` and `worker` for video file handoff |
+
+---
+
+## 🔧 Manual Setup (Without Docker)
+
+If you prefer running services directly:
+
+1. **Clone the repository**
+2. **Create virtual environment:** `python -m venv venv && venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Mac/Linux)
+3. **Install requirements:** `pip install -r requirements.txt`
+4. **Configure Environment:** Copy `.env.example` to `.env` and fill in your keys. Ensure `DB_HOST=localhost` and `USE_LOCAL_DB=true`.
+5. **Start external services:** Ensure Redis, MongoDB, MySQL, and Elasticsearch are running locally.
+6. **Initialize MySQL Schema:** Create a database named `sports_injury_detection` and import `database/init.sql` to generate the tables.
+7. **Run the API:** `uvicorn api.server:app --reload --port 8000`
+8. **Run the Celery Worker:** `celery -A src.worker.celery_app worker --loglevel=info -P threads`
+9. **Run Celery Beat (Cron Jobs):** `celery -A src.worker.celery_app beat --loglevel=info`
+10. **Run the Frontend:** `cd frontend && npm install && npm run dev`
+
+---
+
+## 🧪 Running Tests
+
+```bash
+# Run the full test suite (uses mock databases — no real DB needed)
+pytest tests/ -v
+
+# Run a specific test folder
+pytest tests/unit/ -v
+pytest tests/api_integration/ -v
+pytest tests/worker/ -v
+pytest tests/mocking/ -v
+```
+
+Test folders:
+
+| Folder | Coverage |
+|---|---|
+| `tests/api_integration/` | FastAPI routes (auth, upload, login) |
+| `tests/unit/` | Password hashing, MongoDB utilities |
+| `tests/worker/` | Celery task logic (video processing, reminders) |
+| `tests/mocking/` | Elasticsearch sync, Cloudinary upload |
+
+---
+
+## 🔄 Continuous Integration (CI)
+
+MoveIQ uses **GitHub Actions** for automated testing to ensure code quality on every push.
+
+### CI Pipeline Overview
+Located at `.github/workflows/ci.yml`, the pipeline runs automatically on:
+- Every `push` to any branch
+- Every `pull_request` to any branch
+
+### What the Pipeline Does
+1. Boots up an isolated Ubuntu runner.
+2. Checks out the repository code.
+3. Sets up Python 3.11 with pip caching.
+4. Installs strictly required OS-level dependencies (`libgl1` and `libglib2.0-0` for OpenCV and MediaPipe).
+5. Installs all project dependencies from `requirements.txt`.
+6. Executes the entire `pytest` suite.
+
+This ensures that no broken code is merged into the `main` branch. The pipeline is designed to run the tests using isolated mock objects, meaning it requires zero external databases or API keys to successfully complete the CI workflow.

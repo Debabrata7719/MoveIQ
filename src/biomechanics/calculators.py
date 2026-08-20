@@ -233,16 +233,38 @@ def calculate_range_of_motion(biomechanics_df: pd.DataFrame) -> pd.DataFrame:
         "left_ankle_angle", "right_ankle_angle",
     ]
 
+    def get_visibility_mask(df: pd.DataFrame, joints: list) -> pd.Series:
+        mask = pd.Series(True, index=df.index)
+        for joint in joints:
+            col = f"{joint}_visibility"
+            if col in df.columns:
+                mask &= (df[col] >= 0.5)
+        return mask
+
     summary_data = {}
     for col in joint_angle_columns:
         rom_column_name = col.replace("_angle", "_rom")  # e.g. left_knee_angle -> left_knee_rom
-        summary_data[rom_column_name] = [biomechanics_df[col].max() - biomechanics_df[col].min()]
+        # BUG FIX 11: Use 95th and 5th percentiles instead of absolute max/min.
+        # This discards the top 5% and bottom 5% of outliers, ignoring glitchy frames.
+        summary_data[rom_column_name] = [
+            biomechanics_df[col].quantile(0.95) - biomechanics_df[col].quantile(0.05)
+        ]
 
     # Also include average symmetry across the whole video (useful at-a-glance summary)
     symmetry_columns = ["knee_symmetry", "hip_symmetry", "elbow_symmetry", "ankle_symmetry"]
+    
+    symmetry_joint_map = {
+        "knee_symmetry": ["left_hip", "left_knee", "left_ankle", "right_hip", "right_knee", "right_ankle"],
+        "hip_symmetry": ["left_shoulder", "left_hip", "left_knee", "right_shoulder", "right_hip", "right_knee"],
+        "elbow_symmetry": ["left_shoulder", "left_elbow", "left_wrist", "right_shoulder", "right_elbow", "right_wrist"],
+        "ankle_symmetry": ["left_knee", "left_ankle", "left_foot_index", "right_knee", "right_ankle", "right_foot_index"]
+    }
+
     for col in symmetry_columns:
         avg_column_name = col.replace("_symmetry", "_symmetry_avg")
-        summary_data[avg_column_name] = [biomechanics_df[col].mean()]
+        mask = get_visibility_mask(biomechanics_df, symmetry_joint_map.get(col, []))
+        valid_data = biomechanics_df.loc[mask, col]
+        summary_data[avg_column_name] = [valid_data.mean() if not valid_data.empty else biomechanics_df[col].mean()]
 
     # Balance / sway: how much the center-of-mass (hip midpoint) wobbled
     # side to side across the WHOLE video. This only makes sense as a
@@ -254,10 +276,18 @@ def calculate_range_of_motion(biomechanics_df: pd.DataFrame) -> pd.DataFrame:
 
     # Average stride length and joint alignment across the video
     if "stride_length" in biomechanics_df.columns:
-        summary_data["avg_stride_length"] = [biomechanics_df["stride_length"].mean()]
+        mask = get_visibility_mask(biomechanics_df, ["left_ankle", "right_ankle"])
+        valid_data = biomechanics_df.loc[mask, "stride_length"]
+        summary_data["avg_stride_length"] = [valid_data.mean() if not valid_data.empty else biomechanics_df["stride_length"].mean()]
+        
     if "left_joint_alignment" in biomechanics_df.columns:
-        summary_data["left_joint_alignment_avg"] = [biomechanics_df["left_joint_alignment"].mean()]
-        summary_data["right_joint_alignment_avg"] = [biomechanics_df["right_joint_alignment"].mean()]
+        mask = get_visibility_mask(biomechanics_df, ["left_hip", "left_knee", "left_ankle"])
+        valid_data = biomechanics_df.loc[mask, "left_joint_alignment"]
+        summary_data["left_joint_alignment_avg"] = [valid_data.mean() if not valid_data.empty else biomechanics_df["left_joint_alignment"].mean()]
+        
+        mask = get_visibility_mask(biomechanics_df, ["right_hip", "right_knee", "right_ankle"])
+        valid_data = biomechanics_df.loc[mask, "right_joint_alignment"]
+        summary_data["right_joint_alignment_avg"] = [valid_data.mean() if not valid_data.empty else biomechanics_df["right_joint_alignment"].mean()]
 
     return pd.DataFrame(summary_data)
 

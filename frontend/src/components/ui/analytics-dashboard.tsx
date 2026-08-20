@@ -1,6 +1,6 @@
-import { cn } from "@/lib/utils";
 import React, { useRef, useEffect, useState } from 'react';
 import { HeartPulse, AlertTriangle, Bone, FileText, Download, X, Loader2, Play } from 'lucide-react';
+import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import { PdfAnalyticsOnly } from './pdf-analytics-only';
 import { PdfRecommendationOnly } from './pdf-recommendation-only';
@@ -33,7 +33,7 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
     const cardRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState('overview');
     const [progress] = useState(healthScore || 0);
-    const [isDarkMode, setIsDarkMode] = useState(true);
+    const [isDarkMode, setIsDarkMode] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     
     // New states for the analytics modal
@@ -70,7 +70,7 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
 
     const handlePlayVideo = () => {
         if (!videoUrl) {
-            alert("Video storage is currently disabled in development (Cloudinary API key commented out). When you re-enable it, the video will play here!");
+            toast.error("Video storage is currently disabled in development (Cloudinary API key commented out). When you re-enable it, the video will play here!");
             return;
         }
         setIsVideoModalOpen(true);
@@ -85,7 +85,54 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
             });
             if (!sessionRes.ok) throw new Error('Failed to fetch session details');
             const sessionData = await sessionRes.json();
-            setFullSessionData(sessionData);
+
+            // Fetch recommendations
+            let recommendations = "No recommendations generated yet.";
+            try {
+                const recRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/recommendations/${sessionId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (recRes.ok) {
+                    const recData = await recRes.json();
+                    if (recData.recommendations) recommendations = recData.recommendations;
+                }
+            } catch (e) {
+                console.error("Could not fetch recommendations", e);
+            }
+
+            // Find previous session in history
+            let previousSession = undefined;
+            try {
+                const sessionIndex = history.findIndex(s => s.session_id === sessionId);
+                if (sessionIndex !== -1 && sessionIndex < history.length - 1) {
+                    const prevSessionSummary = history[sessionIndex + 1];
+                    const prevRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/${prevSessionSummary.session_id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (prevRes.ok) previousSession = await prevRes.json();
+                }
+            } catch (e) {
+                console.error("Could not fetch previous session", e);
+            }
+
+            // Fetch athlete profile & real full name
+            let athleteProfile = null;
+            try {
+                const profileRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/profile/`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const profData = profileRes.ok ? await profileRes.json() : null;
+                const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const meData = meRes.ok ? await meRes.json() : null;
+                const fullName = meData?.user?.full_name || null;
+                athleteProfile = profData ? { ...profData, full_name: fullName } : { full_name: fullName };
+            } catch (e) {
+                console.error("Could not fetch profile", e);
+            }
+
+            setFullSessionData({ ...sessionData, recommendations, previousSession, athleteProfile });
             setIsAnalyticsModalOpen(true);
         } catch (error) {
             console.error(error);
@@ -108,7 +155,20 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
             
             for (let i = 0; i < pages.length; i++) {
                 const pageEl = pages[i] as HTMLElement;
-                const dataUrl = await htmlToImage.toPng(pageEl, { quality: 1, backgroundColor: '#ffffff', pixelRatio: 2 });
+                const dataUrl = await htmlToImage.toPng(pageEl, { 
+                    quality: 1, 
+                    backgroundColor: '#ffffff', 
+                    pixelRatio: 2,
+                    skipFonts: true,
+                    styleSheetsFilter: (styleSheet: any) => {
+                        try {
+                            const rules = styleSheet.cssRules;
+                            return true;
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+                } as any);
                 if (i > 0) pdf.addPage();
                 
                 const pdfHeight = (pageEl.offsetHeight * pdfWidth) / pageEl.offsetWidth;
@@ -200,7 +260,20 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
             
             for (let i = 0; i < pages.length; i++) {
                 const pageEl = pages[i] as HTMLElement;
-                const dataUrl = await htmlToImage.toPng(pageEl, { quality: 1, backgroundColor: '#ffffff', pixelRatio: 2 });
+                const dataUrl = await htmlToImage.toPng(pageEl, { 
+                    quality: 1, 
+                    backgroundColor: '#ffffff', 
+                    pixelRatio: 2,
+                    skipFonts: true,
+                    styleSheetsFilter: (styleSheet: any) => {
+                        try {
+                            const rules = styleSheet.cssRules;
+                            return true;
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+                } as any);
                 if (i > 0) pdf.addPage();
                 
                 const pdfHeight = (pageEl.offsetHeight * pdfWidth) / pageEl.offsetWidth;
@@ -224,7 +297,7 @@ export const MinimalProfessionalCard: React.FC<MoveIQDashboardProps> = ({
                         'from-red-400 to-rose-600';
 
     return (
-        <div className="flex flex-col h-full bg-slate-950">
+        <div className="flex flex-col h-full bg-transparent">
             <div className={`flex-1 p-8 flex items-center justify-center transition-opacity duration-300 ${isProcessing ? 'opacity-50 pointer-events-none select-none' : ''}`}>
                 <div 
                     ref={cardRef}

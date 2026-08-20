@@ -1,5 +1,13 @@
 import os
 from dotenv import load_dotenv
+import sys
+import logging
+
+# Ensure we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.logger import get_logger
+logger = get_logger("cloud_storage")
 
 # Load environment variables BEFORE importing cloudinary
 load_dotenv()
@@ -16,40 +24,102 @@ if cloudinary_url:
         secure=True
     )
 
-def upload_video(file_path: str, public_id: str = None) -> str:
-    """
-    Uploads a video to Cloudinary.
-    
-    Args:
-        file_path (str): The local path to the video file (e.g., outputs/annotated_videos/video_annotated.mp4).
-        public_id (str): Optional string to explicitly name the file on Cloudinary.
-        
-    Returns:
-        str: The secure public URL of the uploaded video, or None if upload failed.
-    """
-    
+def get_upload_signature(folder: str = "sports_injury_raw_videos") -> dict:
+    """Generates a signed signature for direct client-side uploads."""
+    import time
     if not os.getenv("CLOUDINARY_URL"):
-        print("Warning: CLOUDINARY_URL not found in environment variables. Upload skipped.")
+        return {}
+        
+    timestamp = int(time.time())
+    params_to_sign = {
+        "timestamp": timestamp,
+        "folder": folder
+    }
+    signature = cloudinary.utils.api_sign_request(params_to_sign, cloudinary.config().api_secret)
+    return {
+        "signature": signature,
+        "timestamp": timestamp,
+        "api_key": cloudinary.config().api_key,
+        "cloud_name": cloudinary.config().cloud_name
+    }
+
+def upload_image(file_path: str, public_id: str = None) -> str:
+    """Uploads a lightweight image (like a key-moment JPEG) to Cloudinary."""
+    if not os.getenv("CLOUDINARY_URL"):
+        logger.warning("CLOUDINARY_URL not found. Upload skipped.")
         return None
         
     if not os.path.exists(file_path):
-        print(f"Error: Video file {file_path} not found.")
         return None
 
-    print(f"Uploading {file_path} to Cloudinary...")
     try:
-        # Use resource_type 'video' specifically for mp4s
         upload_result = cloudinary.uploader.upload(
+            file_path, 
+            resource_type="image",
+            public_id=public_id,
+            folder="sports_injury_key_moments",
+            transformation=[
+                {"width": 800, "crop": "scale"} # Ensure max width to save bandwidth
+            ]
+        )
+        return upload_result.get("secure_url")
+    except Exception as e:
+        logger.error(f"Failed to upload image to Cloudinary: {e}")
+        return None
+
+def upload_video(file_path: str, public_id: str = None) -> str:
+    """Uploads a large video file to Cloudinary."""
+    if not os.getenv("CLOUDINARY_URL"):
+        logger.warning("CLOUDINARY_URL not found. Video upload skipped.")
+        return None
+        
+    if not os.path.exists(file_path):
+        return None
+
+    try:
+        upload_result = cloudinary.uploader.upload_large(
             file_path, 
             resource_type="video",
             public_id=public_id,
-            folder="sports_injury_videos"
+            folder="sports_injury_raw_videos"
         )
-        
-        secure_url = upload_result.get("secure_url")
-        print(f"Upload successful! URL: {secure_url}")
-        return secure_url
-        
+        return upload_result.get("secure_url")
     except Exception as e:
-        print(f"Failed to upload video to Cloudinary: {e}")
+        logger.error(f"Failed to upload video to Cloudinary: {e}")
         return None
+
+def delete_all_raw_videos() -> int:
+    """Deletes all videos in the sports_injury_raw_videos folder."""
+    if not os.getenv("CLOUDINARY_URL"):
+        return 0
+        
+    try:
+        # We can delete by prefix (folder name)
+        result = cloudinary.api.delete_resources_by_prefix(
+            "sports_injury_raw_videos/", 
+            resource_type="video"
+        )
+        deleted_count = len(result.get('deleted', {}))
+        logger.info(f"Deleted {deleted_count} raw videos from Cloudinary.")
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Failed to delete raw videos from Cloudinary: {e}")
+        return 0
+
+def delete_all_key_moments() -> int:
+    """Deletes all images in the sports_injury_key_moments folder."""
+    if not os.getenv("CLOUDINARY_URL"):
+        return 0
+        
+    try:
+        # We can delete by prefix (folder name)
+        result = cloudinary.api.delete_resources_by_prefix(
+            "sports_injury_key_moments/", 
+            resource_type="image"
+        )
+        deleted_count = len(result.get('deleted', {}))
+        logger.info(f"Deleted {deleted_count} key moment images from Cloudinary.")
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Failed to delete key moments from Cloudinary: {e}")
+        return 0
