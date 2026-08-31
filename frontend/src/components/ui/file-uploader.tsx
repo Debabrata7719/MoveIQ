@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { useUpload } from '@/context/UploadContext';
 import { UploadCloud, X, FileVideo, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface FileUploaderProps {
@@ -33,10 +34,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const { startUpload, isUploading: uploading, progress } = useUpload();
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith('video/')) {
@@ -96,124 +97,18 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ token, onUploadSucce
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-    setUploading(true);
-    setProgress(0);
     
     if (onUploadStart) {
         onUploadStart();
     }
     
-    try {
-      // 1. Get Signature
-      const sigResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/upload-signature`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!sigResponse.ok) {
-        throw new Error('Failed to get upload signature');
+    // Trigger the global upload
+    await startUpload(selectedFile, customName, token || '', undefined, (data) => {
+      if (onUploadSuccess) {
+        // Wait 500ms before calling success, similar to the original behavior
+        setTimeout(() => onUploadSuccess(data), 500);
       }
-      const sigData = await sigResponse.json();
-      
-      // 2. Upload directly to Cloudinary
-      const cloudinaryFormData = new FormData();
-      cloudinaryFormData.append('file', selectedFile);
-      cloudinaryFormData.append('api_key', sigData.api_key);
-      cloudinaryFormData.append('timestamp', sigData.timestamp);
-      cloudinaryFormData.append('signature', sigData.signature);
-      cloudinaryFormData.append('folder', 'sports_injury_raw_videos');
-      
-      setProgress(10);
-      const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/video/upload`, {
-        method: 'POST',
-        body: cloudinaryFormData
-      });
-      
-      if (!cloudRes.ok) {
-        throw new Error('Direct upload to cloud failed');
-      }
-      const cloudData = await cloudRes.json();
-      setProgress(50);
-      
-      // 3. Trigger processing on backend
-      const processRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/process-video`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          secure_url: cloudData.secure_url,
-          custom_name: customName.trim() || undefined
-        }),
-      });
-
-      const data = await processRes.json();
-
-      if (!processRes.ok) {
-        throw new Error(data.detail || 'Failed to start analysis');
-      }
-
-      // WebSocket listener
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
-      const wsHost = apiUrl.replace(/^https?:\/\//, '');
-      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}?token=${token}`);
-
-      ws.onmessage = async (event) => {
-        const msg = JSON.parse(event.data);
-        
-        if (msg.progress) {
-          setProgress(msg.progress);
-        }
-        
-        if (msg.step === "Analysis Complete") {
-          ws.close();
-          setToast({ message: 'Video analyzed successfully!', type: 'success' });
-          
-          try {
-            // Fetch the final session data
-            const res = await fetch(`${apiUrl}/api/sessions/${data.session_id}`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const sessionData = await res.json();
-              if (onUploadSuccess) {
-                setTimeout(() => onUploadSuccess(sessionData), 500);
-              }
-            }
-          } catch (e) {
-             console.error("Failed to fetch final session", e);
-          } finally {
-            setUploading(false);
-          }
-        }
-        
-        if (msg.step === "ERROR") {
-          ws.close();
-          setToast({ message: msg.error || 'Pipeline failed', type: 'error' });
-          setUploading(false);
-          setProgress(0);
-        }
-      };
-
-      ws.onerror = () => {
-        setToast({ message: 'WebSocket connection failed.', type: 'error' });
-        setUploading(false);
-        setProgress(0);
-      };
-
-      ws.onclose = (event) => {
-        if (!event.wasClean && uploading) {
-          setToast({ message: 'Disconnected from progress tracking.', type: 'error' });
-          setUploading(false);
-          setProgress(0);
-        }
-      };
-
-    } catch (err: any) {
-      setToast({ message: err.message, type: 'error' });
-      setProgress(0);
-      setUploading(false);
-    }
+    });
   };
 
   return (

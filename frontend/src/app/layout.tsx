@@ -33,6 +33,9 @@ export const metadata: Metadata = {
   },
 };
 
+import { UploadProvider } from "@/context/UploadContext";
+import { GlobalUploadProgress } from "@/components/ui/GlobalUploadProgress";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -64,9 +67,11 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-
-        {children}
-        <Toaster position="top-right" />
+        <UploadProvider>
+          {children}
+          <Toaster position="top-right" />
+          <GlobalUploadProgress />
+        </UploadProvider>
       </body>
     </html>
   );

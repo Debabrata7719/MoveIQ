@@ -16,41 +16,6 @@ services:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-  # ── MongoDB (NoSQL DB) ─────────────────────────────────────
-  # Stores AI Reports, Biomechanics data, and Chat history
-  mongodb:
-    image: mongo:6.0
-    container_name: moveiq_mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── MySQL (Relational DB) ──────────────────────────────────
-  # Stores Users, Roles, and Coach/Athlete relationships
-  mysql:
-    image: mysql:8.0
-    container_name: moveiq_mysql
-    restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
-      - MYSQL_DATABASE=${DB_NAME}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ── Elasticsearch ──────────────────────────────────────────
   # Powers the Coach Dashboard athlete search (fuzzy search)
@@ -81,10 +46,8 @@ services:
     container_name: moveiq_api
     restart: unless-stopped
     command: uvicorn api.server:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
     env_file:
-      - .env.docker
+      - .env.production
     depends_on:
       redis:
         condition: service_healthy
@@ -108,7 +71,7 @@ services:
       -Q video_processing,default,high_priority,low_priority
       --concurrency=4
     env_file:
-      - .env.docker
+      - .env.production
     depends_on:
       redis:
         condition: service_healthy
@@ -127,26 +90,26 @@ services:
     restart: unless-stopped
     command: celery -A src.worker.celery_app beat --loglevel=info
     env_file:
-      - .env.docker
+      - .env.production
     depends_on:
       redis:
         condition: service_healthy
 
-  # ── Frontend (Next.js) ────────────────────────────────────
-  # The web UI served at http://localhost:3000
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: moveiq_frontend
+  # ── Caddy (Reverse Proxy & HTTPS) ──────────────────────────
+  # Auto-provisions Let's Encrypt SSL and routes to FastAPI
+  caddy:
+    image: caddy:2-alpine
+    container_name: moveiq_caddy
     restart: unless-stopped
     ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - api
-
 # ── Named Volumes ──────────────────────────────────────────
 volumes:
   # Persists Elasticsearch index data across container restarts
@@ -157,10 +120,3 @@ volumes:
   temp_uploads:
     driver: local
 
-  # Persists MySQL database records
-  mysql_data:
-    driver: local
-
-  # Persists MongoDB database records
-  mongodb_data:
-    driver: local

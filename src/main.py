@@ -117,30 +117,38 @@ def run_pipeline(athlete_id: str, video_name: str = None, source_path: str = Non
 
         
         # 2. Capture those precise frames instantly
+        annotated_video_path = os.path.join(ANNOTATED_VIDEO_DIR, f"{video_name}_annotated.mp4")
+        video_to_capture = annotated_video_path if os.path.exists(annotated_video_path) else actual_video_path
+        
         if key_frames:
             from src.capture_key_frames import capture_frames
-            key_image_paths = capture_frames(actual_video_path, key_frames, ANNOTATED_IMAGES_DIR, video_name)
-
+            key_image_paths = capture_frames(video_to_capture, key_frames, ANNOTATED_IMAGES_DIR, video_name)
         else:
             key_image_paths = []
     else:
-
         key_image_paths = []
 
     if key_image_paths:
-        key_moments_urls = []
-        print(f"\n{Colors.BLUE}Uploading Key Moment Images to Cloudinary...{Colors.ENDC}")
+        import base64
+        key_moments_b64 = []
+        print(f"\n{Colors.BLUE}Encoding Key Moment Images to Base64...{Colors.ENDC}")
         publish_progress(session_id, "Capturing Visual Evidence", 85)
-        # Bypass Cloudinary Upload as requested by user
-        if key_moments_urls is None:
-            key_moments_urls = []
-            logger.debug(f"Extracted key moments URLs: {key_moments_urls}")
+        
+        for img_path in key_image_paths:
             try:
-                from database.mongo_utils import update_session_key_moments
-                update_session_key_moments(session_id, key_moments_urls)
-                logger.info(f"Successfully stored {len(key_moments_urls)} key moment URLs in MongoDB.")
+                with open(img_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                    key_moments_b64.append(f"data:image/jpeg;base64,{encoded_string}")
             except Exception as e:
-                logger.error(f"Error storing key moments in DB: {e}")
+                logger.error(f"Failed to encode image {img_path}: {e}")
+
+        logger.debug(f"Extracted {len(key_moments_b64)} key moments Base64 strings")
+        try:
+            from database.mongo_utils import update_session_key_moments
+            update_session_key_moments(session_id, key_moments_b64)
+            logger.info(f"Successfully stored {len(key_moments_b64)} key moment images in MongoDB.")
+        except Exception as e:
+            logger.error(f"Error storing key moments in DB: {e}")
 
     # ==========================================
     # CSV CLEANUP

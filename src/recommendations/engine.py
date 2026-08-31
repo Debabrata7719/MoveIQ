@@ -153,15 +153,14 @@ def lookup_exercises(state: RecommendationState) -> RecommendationState:
 def generate_recommendation(state: RecommendationState) -> RecommendationState:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    # Groq qwen3.6-27b is primary (faster)
-    # Gemini 3.6 Flash is the fallback if Groq fails
-    llm_primary = ChatGroq(model="qwen/qwen3.6-27b", temperature=0.4).with_structured_output(RecommendationOutput)
-    llm_fallback = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0.4).with_structured_output(RecommendationOutput)
+    # Groq openai/gpt-oss-20b is primary (verified working with structured outputs)
+    # Groq openai/gpt-oss-120b is the fallback
+    llm_primary = ChatGroq(model="openai/gpt-oss-20b", temperature=0.4).with_structured_output(RecommendationOutput)
+    llm_fallback = ChatGroq(model="openai/gpt-oss-120b", temperature=0.4).with_structured_output(RecommendationOutput)
     
-    # with_fallbacks: if Groq raises any exception, LangChain automatically
-    # retries the same inputs against Gemini.
+    # with_fallbacks: if primary fails, LangChain automatically retries fallback.
     structured_llm = llm_primary.with_fallbacks([llm_fallback])
-    logger.info("LLM chain built: Groq Qwen 3.6-27b (primary) -> Gemini 3.6 Flash (fallback)")
+    logger.info("LLM chain built: Groq GPT-OSS-20b (primary) -> Groq GPT-OSS-120b (fallback)")
 
     chain = RECOMMENDATION_PROMPT | structured_llm
 

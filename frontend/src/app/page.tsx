@@ -30,6 +30,31 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [showSecurityWarningModal, setShowSecurityWarningModal] = useState(false);
+
+  // Global fetch interceptor to catch security mismatch events
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        try {
+          const clone = response.clone();
+          const body = await clone.json();
+          if (body.detail === "abnormal_device_change") {
+            setShowSecurityWarningModal(true);
+            handleLogout();
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+      }
+      return response;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [token]);
 
   // RBAC & Dashboard Role Routing
   const [activeDashboard, setActiveDashboard] = useState<'athlete' | 'coach' | 'ops' | null>(null);
@@ -72,16 +97,18 @@ export default function Home() {
     }
   };
   useEffect(() => {
-    // Check if token exists on mount
-    const savedToken = localStorage.getItem("token");
-    const savedUser = localStorage.getItem("user");
-    const savedDashboard = localStorage.getItem("activeDashboard") as 'athlete' | 'coach' | 'ops' | null;
+    // Check if token exists on mount (look in both localStorage and sessionStorage)
+    const savedToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const savedUser = localStorage.getItem("user") || sessionStorage.getItem("user");
+    const savedDashboard = (localStorage.getItem("activeDashboard") || sessionStorage.getItem("activeDashboard")) as 'athlete' | 'coach' | 'ops' | null;
 
     if (savedToken && savedUser) {
       setToken(savedToken);
       const parsedUser = JSON.parse(savedUser);
       setUser(parsedUser);
       setIsAuthenticated(true);
+
+      const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
 
       // Sync fresh user metadata (like profile avatar) from backend database
       fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
@@ -99,7 +126,7 @@ export default function Home() {
             coach_code: data.user.coach_code
           };
           setUser(freshUser);
-          localStorage.setItem("user", JSON.stringify(freshUser));
+          storage.setItem("user", JSON.stringify(freshUser));
         }
       })
       .catch(err => console.error("Failed to sync user on mount", err));
@@ -107,7 +134,7 @@ export default function Home() {
       const roles = parsedUser.roles || [];
       if (savedDashboard === 'ops' || roles.includes('admin')) {
         setActiveDashboard('ops');
-        localStorage.setItem('activeDashboard', 'ops');
+        storage.setItem('activeDashboard', 'ops');
       } else if (savedDashboard) {
         setActiveDashboard(savedDashboard as 'athlete' | 'coach');
         if (savedDashboard === 'athlete') {
@@ -119,10 +146,10 @@ export default function Home() {
         setActiveDashboard(null); // Force selection screen
       } else if (roles.includes("coach")) {
         setActiveDashboard("coach");
-        localStorage.setItem("activeDashboard", "coach");
+        storage.setItem("activeDashboard", "coach");
       } else {
         setActiveDashboard("athlete");
-        localStorage.setItem("activeDashboard", "athlete");
+        storage.setItem("activeDashboard", "athlete");
         checkProfileStatus(savedToken);
         fetchCoachStatus(savedToken);
         fetchSessionsHistory(savedToken);
@@ -178,7 +205,7 @@ export default function Home() {
     }
   }
 
-  const handleLogin = (jwt: string, userData: any) => {
+  const handleLogin = (jwt: string, userData: any, rememberMe: boolean = false) => {
     // Reset all previous session state
     setHasData(false);
     setDashboardData(null);
@@ -188,8 +215,10 @@ export default function Home() {
     setToken(jwt);
     setUser(userData);
     setIsAuthenticated(true);
-    localStorage.setItem("token", jwt);
-    localStorage.setItem("user", JSON.stringify(userData));
+
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem("token", jwt);
+    storage.setItem("user", JSON.stringify(userData));
 
     // Sync authoritative user metadata (such as coach_code and avatar) from backend
     fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
@@ -207,7 +236,7 @@ export default function Home() {
           coach_code: data.user.coach_code
         };
         setUser(freshUser);
-        localStorage.setItem("user", JSON.stringify(freshUser));
+        storage.setItem("user", JSON.stringify(freshUser));
       }
     })
     .catch(err => console.error("Failed to sync user on login", err));
@@ -215,15 +244,15 @@ export default function Home() {
     const roles = userData.roles || [];
     if (roles.includes('admin')) {
       setActiveDashboard('ops');
-      localStorage.setItem('activeDashboard', 'ops');
+      storage.setItem('activeDashboard', 'ops');
     } else if (roles.includes("coach") && roles.includes("athlete")) {
       setActiveDashboard(null); // Choose role selection screen
     } else if (roles.includes("coach")) {
       setActiveDashboard("coach");
-      localStorage.setItem("activeDashboard", "coach");
+      storage.setItem("activeDashboard", "coach");
     } else {
       setActiveDashboard("athlete");
-      localStorage.setItem("activeDashboard", "athlete");
+      storage.setItem("activeDashboard", "athlete");
       checkProfileStatus(jwt);
       fetchCoachStatus(jwt);
       fetchSessionsHistory(jwt);
@@ -243,7 +272,7 @@ export default function Home() {
     } else if (urlToken && urlUser) {
       try {
         const parsedUser = JSON.parse(decodeURIComponent(urlUser));
-        handleLogin(urlToken, parsedUser);
+        handleLogin(urlToken, parsedUser, true); // Google Login defaults to Remember Me = True
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (e) {
         console.error("Failed to parse OAuth user data", e);
@@ -253,7 +282,8 @@ export default function Home() {
 
   const handleSelectDashboard = (role: 'athlete' | 'coach') => {
     setActiveDashboard(role);
-    localStorage.setItem("activeDashboard", role);
+    const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
+    storage.setItem("activeDashboard", role);
     setActiveView('dashboard');
     if (role === 'athlete' && token) {
       checkProfileStatus(token);
@@ -263,15 +293,29 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    // Call backend logout API to delete session in Redis
+    if (token) {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/logout`, {
+        method: "POST",
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(err => console.error("Logout API failed", err));
+    }
+
     setIsAuthenticated(false);
     setToken(null);
     setUser(null);
     setHasData(false);
     setDashboardData(null);
     setActiveDashboard(null);
+    
+    // Clear both storages entirely
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("activeDashboard");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("activeDashboard");
+    
     setActiveView('dashboard');
     setIsLockedToProfile(false);
   };
@@ -724,6 +768,36 @@ Note: AI Corrective Recommendation plan is not generated yet. Launch Recommendat
             exercise={activeExercise}
             onClose={() => setActiveExercise(null)}
           />
+        )}
+
+        {showSecurityWarningModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-[#c3c6d8] dark:border-slate-800 p-6 shadow-2xl space-y-4 text-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto text-[#ba1a1a]">
+                <span className="material-symbols-outlined text-[36px] font-bold">
+                  lock
+                </span>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-extrabold text-[#0F172A] dark:text-white">
+                  🔒 Security Alert: Session Locked
+                </h3>
+                <p className="text-sm text-[#475569] dark:text-slate-300 leading-relaxed font-semibold">
+                  We detected a change in your device or location. For your security, this session has been locked and a notification email has been dispatched. Please sign in again with your password to verify your identity.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSecurityWarningModal(false);
+                  setAuthView('login');
+                }}
+                className="w-full py-3 bg-[#004ccd] hover:bg-[#003da9] text-white font-bold rounded-xl shadow-md transition-colors uppercase tracking-wider text-xs cursor-pointer"
+                style={{ cursor: 'pointer' }}
+              >
+                Log In Again
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </main>

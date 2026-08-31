@@ -34,6 +34,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    remember_me: bool = False
 
 class EmailRequest(BaseModel):
     email: EmailStr
@@ -115,6 +116,34 @@ def login_user(request: Request, user: UserLogin):
     
     token = create_access_token(token_data)
     
+    # Save Session to Redis
+    try:
+        from database.redis_utils import get_redis_client
+        from api.auth.geo_utils import get_country_from_ip
+        r_client = get_redis_client()
+        session_key = f"session:{token}"
+        
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        country = get_country_from_ip(client_ip)
+        
+        session_payload = {
+            "user_id": db_user["id"],
+            "email": db_user["email"],
+            "roles": roles,
+            "ip": client_ip,
+            "user_agent": user_agent,
+            "country": country,
+            "remember_me": user.remember_me
+        }
+        
+        # 30 days if remember_me else 1 hour (3600 seconds)
+        ttl = 30 * 24 * 3600 if user.remember_me else 3600
+        r_client.setex(session_key, ttl, json.dumps(session_payload))
+    except Exception as e:
+        # Fallback to normal JWT validation if Redis connection fails
+        print(f"Redis session storage failed: {e}")
+    
     from database.sql_utils import get_user_by_id
     full_user = get_user_by_id(db_user["id"]) or db_user
     
@@ -130,6 +159,19 @@ def login_user(request: Request, user: UserLogin):
             "coach_code": full_user.get("coach_code")
         }
     }
+
+@router.post("/logout")
+def logout_user(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            from database.redis_utils import get_redis_client
+            r_client = get_redis_client()
+            r_client.delete(f"session:{token}")
+        except Exception:
+            pass
+    return {"message": "Logged out successfully"}
 
 @router.post("/forgot-password")
 @limiter.limit("3/15minutes")
@@ -265,7 +307,7 @@ def google_login(role: str = "athlete"):
 
 @router.get("/google/callback")
 @google_auth_router.get("/auth/google/callback")
-async def google_callback(code: str = None, state: str = None, error: str = None):
+async def google_callback(request: Request, code: str = None, state: str = None, error: str = None):
     if error or not code:
         return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=google_auth_failed")
     
@@ -342,6 +384,32 @@ async def google_callback(code: str = None, state: str = None, error: str = None
         "coach_code": full_user.get("coach_code")
     }
     jwt_token = create_access_token(data={"sub": str(user_id), "email": email, "roles": roles})
+    
+    # Save Session to Redis
+    try:
+        from database.redis_utils import get_redis_client
+        from api.auth.geo_utils import get_country_from_ip
+        r_client = get_redis_client()
+        session_key = f"session:{jwt_token}"
+        
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        country = get_country_from_ip(client_ip)
+        
+        session_payload = {
+            "user_id": user_id,
+            "email": email,
+            "roles": roles,
+            "ip": client_ip,
+            "user_agent": user_agent,
+            "country": country,
+            "remember_me": True
+        }
+        
+        ttl = 30 * 24 * 3600 # 30 days for OAuth login
+        r_client.setex(session_key, ttl, json.dumps(session_payload))
+    except Exception as e:
+        print(f"Redis session storage failed for Google Login: {e}")
     
     user_json = urllib.parse.quote(json.dumps(user_payload))
     redirect_url = f"{settings.FRONTEND_URL}?token={jwt_token}&user={user_json}"

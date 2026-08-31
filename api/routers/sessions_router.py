@@ -252,6 +252,13 @@ def delete_session(session_id: str, current_user: Dict[str, Any] = Depends(get_c
     db["biomechanics_data"].delete_one({"session_id": session_id})
     db["recommendations"].delete_one({"session_id": session_id})
     
+    # Sync deletion to Elasticsearch
+    try:
+        from src.worker.delete_tasks import handle_session_deleted_es_sync
+        handle_session_deleted_es_sync.apply_async(args=[session["athlete_id"]], queue="default")
+    except Exception as e:
+        pass # Non-blocking
+        
     return {"message": "Session and all related data deleted successfully"}
 
 @router.get("/{session_id}/report/download")

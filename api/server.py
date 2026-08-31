@@ -39,6 +39,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://move-iq-theta.vercel.app",
+        "https://moveiq.debabrata.site",
     ],
     allow_credentials=True,
     allow_methods=["*"],

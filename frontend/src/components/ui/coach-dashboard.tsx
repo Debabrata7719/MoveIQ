@@ -643,7 +643,7 @@ MoveIQ Injury Prevention System
         {activeTab === 'upload_video' && (
           <UploadVideoView
             athletes={athletes}
-            onUploadAndAnalyze={handleVideoUploadSubmit}
+            token={token}
             setActiveTab={setActiveTab}
           />
         )}

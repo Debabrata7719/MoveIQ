@@ -636,4 +636,11 @@ def delete_athlete_assignment(athlete_id: int, current_user: Dict[str, Any] = De
     except Exception:
         pass
         
+    # Sync deletion to Elasticsearch
+    try:
+        from src.worker.delete_tasks import delete_athlete_from_es
+        delete_athlete_from_es.apply_async(args=[athlete_id], queue="default")
+    except Exception as e:
+        pass # Non-blocking
+        
     return {"message": "Athlete connection removed successfully"}

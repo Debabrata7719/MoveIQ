@@ -101,3 +101,17 @@ def send_athlete_welcome_email_task(self, to_email: str, full_name: str, reset_t
     if not success:
         raise ConnectionError(f"Failed to send athlete welcome email to {to_email}")
     return "Sent"
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=RETRY_EXCEPTIONS,
+    retry_backoff=True,
+    retry_kwargs={'max_retries': 3}
+)
+def send_security_alert_email_task(self, to_email: str, user_agent: str, ip_address: str):
+    from shared.email_utils import send_security_alert_email
+    logger.info(f"Sending security alert email to {to_email}")
+    success = send_security_alert_email(to_email, user_agent, ip_address)
+    if not success:
+        raise ConnectionError(f"Failed to send security alert email to {to_email}")
+    return "Sent"

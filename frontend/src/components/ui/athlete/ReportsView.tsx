@@ -80,7 +80,7 @@ MoveIQ Injury Prevention System
     } else {
       try {
         setIsDownloading(s.session_id);
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
 
         // Fetch recommendations if not present or string
         let recommendations = s.recommendations;
@@ -239,7 +239,7 @@ MoveIQ Injury Prevention System
                       </button>
                     </div>
                     <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-xs text-white text-[12px] px-2.5 py-1 rounded font-mono">
-                      {s.created_at ? new Date(s.created_at).toLocaleDateString() : 'N/A'}
+                      {s.created_at ? new Date(s.created_at.endsWith('Z') || s.created_at.includes('+') ? s.created_at : s.created_at + 'Z').toLocaleString(undefined, { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}
                     </div>
                   </div>
 
