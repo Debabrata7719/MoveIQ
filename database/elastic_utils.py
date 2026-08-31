@@ -16,24 +16,30 @@ def get_es_client():
         return _es_client
 
     use_local = os.getenv("USE_LOCAL_DB", "true").lower() == "true"
+    es_urls = []
     if use_local:
-        es_url = os.getenv("LOCAL_ELASTICSEARCH_URL", "http://localhost:9200")
-    else:
-        es_url = os.getenv("CLOUD_ELASTICSEARCH_URL", "https://elasticsearch-production-c98b.up.railway.app")
+        es_urls.append(os.getenv("LOCAL_ELASTICSEARCH_URL", "http://localhost:9200"))
+    
+    # Always include cloud URL as a fallback
+    cloud_url = os.getenv("CLOUD_ELASTICSEARCH_URL", "https://elasticsearch-production-c98b.up.railway.app")
+    if cloud_url:
+        es_urls.append(cloud_url)
 
-    try:
-        # We disable verification in development if using self-signed certs,
-        # but Railway handles proper TLS.
-        _es_client = Elasticsearch([es_url])
-        # Verify connection
-        if _es_client.ping():
-            logger.info(f"Connected to Elasticsearch at {es_url}")
-        else:
-            logger.warning(f"Could not connect to Elasticsearch at {es_url}")
-    except Exception as e:
-        logger.error(f"Error initializing Elasticsearch client: {e}")
-        _es_client = None
+    for es_url in es_urls:
+        try:
+            _es_client = Elasticsearch([es_url])
+            # Verify connection
+            if _es_client.ping():
+                logger.info(f"Connected to Elasticsearch at {es_url}")
+                return _es_client
+            else:
+                logger.warning(f"Could not connect/ping Elasticsearch at {es_url}")
+        except Exception as e:
+            logger.error(f"Error initializing Elasticsearch client at {es_url}: {e}")
+            _es_client = None
 
+    logger.critical("All configured Elasticsearch connection endpoints failed.")
+    _es_client = None
     return _es_client
 
 def initialize_indices():
@@ -73,42 +79,3 @@ def initialize_indices():
     except Exception as e:
         logger.error(f"Failed to create index {index_name}: {e}")
 
-    # Coach index mapping
-    coach_mapping = {
-        "mappings": {
-            "properties": {
-                "id": {"type": "integer"},
-                "full_name": {"type": "text"},
-                "email": {"type": "text"},
-                "coach_code": {"type": "text"}
-            }
-        }
-    }
-    
-    try:
-        if not es.indices.exists(index="coaches"):
-            es.indices.create(index="coaches", body=coach_mapping)
-            logger.info("Created index: coaches")
-    except Exception as e:
-        logger.error(f"Failed to create index coaches: {e}")
-
-    # Global users index mapping
-    users_mapping = {
-        "mappings": {
-            "properties": {
-                "id": {"type": "integer"},
-                "full_name": {"type": "text"},
-                "email": {"type": "text"},
-                "roles": {"type": "keyword"},
-                "is_active": {"type": "boolean"},
-                "created_at": {"type": "date"}
-            }
-        }
-    }
-    
-    try:
-        if not es.indices.exists(index="users_global"):
-            es.indices.create(index="users_global", body=users_mapping)
-            logger.info("Created index: users_global")
-    except Exception as e:
-        logger.error(f"Failed to create index users_global: {e}")

@@ -46,6 +46,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [fullName, setFullName] = useState('');
   const [otp, setOtp] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -86,6 +87,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
     setConfirmPassword('');
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setRememberMe(false);
   };
 
   const switchMode = (newMode: AuthMode) => {
@@ -144,11 +146,11 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password, remember_me: rememberMe })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Login failed');
-        onSuccess(data.access_token, data.user);
+        onSuccess(data.access_token, data.user, rememberMe);
 
       } else if (mode === 'register') {
         if (!otpSent) {
@@ -169,10 +171,10 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
         const loginRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password, remember_me: false })
         });
         const loginData = await loginRes.json();
-        if (loginRes.ok) onSuccess(loginData.access_token, loginData.user);
+        if (loginRes.ok) onSuccess(loginData.access_token, loginData.user, false);
         else switchMode('login');
 
       } else if (mode === 'forgot_password') {
@@ -469,6 +471,20 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, onBack, initialMo
                     {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
                   </button>
                 </div>
+                {mode === 'login' && (
+                  <div className="flex items-center justify-between mt-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-[#475569] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-[#c3c6d8] text-[#004ccd] focus:ring-[#004ccd]"
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      Remember me
+                    </label>
+                  </div>
+                )}
                 {mode === 'register' && <PasswordRequirements password={password} />}
               </div>
             )}

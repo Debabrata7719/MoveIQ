@@ -23,6 +23,9 @@ redis
 scipy
 celery
 psycopg2-binary
+sqlalchemy
+alembic
+pymysql
 httpx
 email-validator
 pydantic[email]

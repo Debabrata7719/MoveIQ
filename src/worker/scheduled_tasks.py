@@ -211,3 +211,51 @@ def cleanup_cloudinary_videos_task():
     except Exception as e:
         logger.error(f"Error in Cloudinary cleanup task: {e}")
         raise
+
+@celery_app.task(
+    name="src.worker.scheduled_tasks.cleanup_old_sessions_task",
+    queue="low_priority",
+    autoretry_for=(PyMongoError, Exception),
+    retry_backoff=True,
+    max_retries=3
+)
+def cleanup_old_sessions_task():
+    """
+    Finds and deletes video sessions, risk scores, biomechanical analyses, 
+    and recommendation reports older than 30 days. Syncs changes to Elasticsearch.
+    """
+    logger.info("Starting database session retention cleanup (older than 30 days)...")
+    try:
+        db = get_db_connection()
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
+        
+        # 1. Find sessions to delete
+        old_sessions = list(db["sessions"].find({"created_at": {"$lt": cutoff_date}}))
+        if not old_sessions:
+            logger.info("No old sessions found to purge.")
+            return "No sessions purged."
+            
+        session_ids = [s["session_id"] for s in old_sessions]
+        affected_athlete_ids = list(set([s["athlete_id"] for s in old_sessions if s.get("athlete_id")]))
+        
+        # 2. Delete from all collections
+        s_res = db["sessions"].delete_many({"session_id": {"$in": session_ids}})
+        r_res = db["risk_scores"].delete_many({"session_id": {"$in": session_ids}})
+        b_res = db["biomechanics_data"].delete_many({"session_id": {"$in": session_ids}})
+        rec_res = db["recommendations"].delete_many({"session_id": {"$in": session_ids}})
+        rep_res = db["full_recommendation_reports"].delete_many({"session_id": {"$in": session_ids}})
+        
+        logger.info(f"Purged {s_res.deleted_count} sessions, {r_res.deleted_count} risk scores, {b_res.deleted_count} biomechanics documents, {rec_res.deleted_count} recommendations, and {rep_res.deleted_count} reports.")
+        
+        # 3. Trigger ES sync for all affected athletes
+        from src.worker.delete_tasks import handle_session_deleted_es_sync
+        for athlete_id in affected_athlete_ids:
+            try:
+                handle_session_deleted_es_sync.apply_async(args=[athlete_id], queue="default")
+            except Exception as e:
+                logger.error(f"Failed to queue ES update for athlete {athlete_id} after purge: {e}")
+                
+        return f"Successfully purged {s_res.deleted_count} sessions."
+    except Exception as e:
+        logger.error(f"Error during retention cleanup task: {e}")
+        raise

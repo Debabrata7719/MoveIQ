@@ -116,7 +116,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
                 Date Recorded
               </div>
               <div className="text-[13px] font-bold text-[#191b23] mt-1">
-                {session.created_at ? new Date(session.created_at).toLocaleDateString() : 'N/A'}
+                {session.created_at ? new Date(session.created_at.endsWith('Z') || session.created_at.includes('+') ? session.created_at : session.created_at + 'Z').toLocaleString(undefined, { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}
               </div>
             </div>
           </div>
@@ -130,6 +130,29 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
               {getIssuesString(session.risk_data?.flagged_issues)}
             </p>
           </div>
+
+          {/* Key Moments Section */}
+          {session.key_moments && session.key_moments.length > 0 && (
+            <div>
+              <h4 className="font-bold text-[#191b23] uppercase text-[12px] tracking-wider mb-2">
+                Biomechanical Key Moments
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {session.key_moments.slice(0, 4).map((url: string, i: number) => (
+                  <div key={i} className="border border-[#c3c6d7] rounded-lg overflow-hidden bg-black flex flex-col justify-between">
+                    <img 
+                      src={url} 
+                      alt={`Key Moment ${i + 1}`} 
+                      className="w-full h-24 object-contain hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="text-[10px] text-center text-white py-1 bg-black/85 font-mono">
+                      Moment {i + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Exercises */}
           <div>

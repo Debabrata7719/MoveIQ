@@ -125,3 +125,19 @@ MoveIQ Biomechanics Support Team
 """
     return send_email(to_email, subject, body)
 
+def send_security_alert_email(to_email: str, user_agent: str, ip_address: str) -> bool:
+    subject = "⚠️ Security Alert: Suspicious Login Activity Detected"
+    body = f"""Hello,
+
+We detected abnormal activity on your MoveIQ account. For your security, we have immediately terminated all active sessions on this account.
+
+Details of the access attempt:
+- Browser/Device: {user_agent}
+- IP Address: {ip_address}
+
+If you did not initiate this change or if you think your account has been compromised, please log in to the portal and change your password immediately.
+
+Best Regards,
+MoveIQ Biomechanics Support Team
+"""
+    return send_email(to_email, subject, body)

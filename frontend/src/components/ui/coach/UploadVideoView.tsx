@@ -12,29 +12,28 @@ import {
   Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useUpload } from '@/context/UploadContext';
 
 interface UploadVideoViewProps {
   athletes: any[];
+  token: string;
   onAddSession?: (session: any) => void;
-  onUploadAndAnalyze?: (formData: FormData) => Promise<any>;
   setActiveTab: (tab: string) => void;
 }
 
 export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
   athletes,
+  token,
   onAddSession,
-  onUploadAndAnalyze,
   setActiveTab
 }) => {
   const [selectedAthleteId, setSelectedAthleteId] = useState('');
   const [videoLabel, setVideoLabel] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisStep, setAnalysisStep] = useState(0);
   const [analysisDone, setAnalysisDone] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const { startUpload, isUploading: isAnalyzing, progress: uploadProgress } = useUpload();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,16 +67,6 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
       setVideoLabel(`${nameWithoutExt} - Biomechanics Scan`);
     }
-    setUploadProgress(10);
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev === null || prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 25;
-      });
-    }, 200);
   };
 
   const handleRunAnalysis = async () => {
@@ -90,89 +79,11 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
       return;
     }
 
-    setIsAnalyzing(true);
-    setAnalysisStep(1);
-    setErrorMsg(null);
-
-    // If backend upload handler prop exists, submit real FormData
-    if (onUploadAndAnalyze && selectedFile) {
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      formData.append('athlete_id', selectedAthleteId);
-      if (videoLabel) formData.append('custom_name', videoLabel);
-
-      try {
-        setAnalysisStep(1);
-        const data = await onUploadAndAnalyze(formData);
-        
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
-        const wsHost = apiUrl.replace(/^https?:\/\//, '');
-        const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/ws/progress/${data.session_id}`);
-
-        ws.onmessage = (event) => {
-          const msg = JSON.parse(event.data);
-          
-          if (msg.progress) {
-             if (msg.progress > 30 && analysisStep < 2) setAnalysisStep(2);
-             if (msg.progress > 60 && analysisStep < 3) setAnalysisStep(3);
-          }
-
-          if (msg.step === "Analysis Complete") {
-             ws.close();
-             setIsAnalyzing(false);
-             setAnalysisDone(true);
-          }
-
-          if (msg.step === "ERROR") {
-             ws.close();
-             setIsAnalyzing(false);
-             setErrorMsg(msg.error || "Analysis failed");
-          }
-        };
-
-        ws.onerror = () => {
-          setIsAnalyzing(false);
-          setErrorMsg("WebSocket connection failed.");
-        };
-
-      } catch (err: any) {
-        setIsAnalyzing(false);
-        setErrorMsg(err?.message || "Analysis failed. Please check file format and backend service.");
-      }
-      return;
-    }
-
-    // Mock progress simulation fallback
-    setTimeout(() => setAnalysisStep(2), 1000);
-    setTimeout(() => setAnalysisStep(3), 2000);
-    setTimeout(() => {
-      setIsAnalyzing(false);
-      setAnalysisDone(true);
-
-      const matchedAthlete = athletes.find(a => String(a.id) === String(selectedAthleteId));
-      const athleteName = matchedAthlete 
-        ? matchedAthlete.full_name || `${matchedAthlete.firstName || ''} ${matchedAthlete.lastName || ''}`.trim()
-        : 'Marcus Johnson';
-
-      if (onAddSession) {
-        onAddSession({
-          id: `sess-${Date.now()}`,
-          athleteId: selectedAthleteId,
-          athleteName,
-          avatarUrl: matchedAthlete?.avatarUrl || matchedAthlete?.profile_picture_url || '',
-          movementType: videoLabel || 'Kinematic Motion Scan',
-          summary: 'Asymmetrical load detected on landing kinetic chain.',
-          riskLevel: 'Medium Risk',
-          timestamp: 'Just now',
-          keyFindings: [
-            'Knee valgus angle: 11.2° peak during landing phase',
-            'Left vs Right Ground Reaction Force disparity: 14%',
-            'Recommended action: Target gluteus medius activation drills'
-          ]
-        });
-      }
-    }, 3200);
+    await startUpload(selectedFile!, videoLabel, token, selectedAthleteId, (data) => {
+        setAnalysisDone(true);
+        // Optional: you could call onAddSession here if you want it to appear immediately in dashboard without refresh
+        // For now, it will be fetched when they go to dashboard
+    });
   };
 
   return (
@@ -187,11 +98,7 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
         </p>
       </div>
 
-      {errorMsg && (
-        <div className="p-4 bg-red-50 text-red-700 rounded-xl text-sm font-semibold border border-red-200">
-          {errorMsg}
-        </div>
-      )}
+      {/* Removed errorMsg because UploadContext handles errors globally now */}
 
       {/* Upload Card */}
       <div className="bg-white rounded-xl shadow-xs border border-[#c3c6d8] p-6 md:p-8 space-y-6">
@@ -298,7 +205,6 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedFile(null);
-                    setUploadProgress(null);
                   }}
                   className="p-1.5 rounded-full text-[#424656] hover:text-[#ba1a1a] hover:bg-[#ffdad6]"
                   title="Remove File"
@@ -332,37 +238,7 @@ export const UploadVideoView: React.FC<UploadVideoViewProps> = ({
         </form>
       </div>
 
-      {/* AI Analyzing Modal / Progress Overlay */}
-      {isAnalyzing && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-[#f3f3ff] text-[#004ccd] mx-auto flex items-center justify-center animate-pulse">
-              <Activity className="w-8 h-8" />
-            </div>
-
-            <div>
-              <h3 className="text-xl font-bold text-[#191c1f]">
-                AI Biomechanics Engine Running
-              </h3>
-              <p className="text-xs text-[#424656] mt-1">
-                Extracting 32 3D joint keypoints & computing kinematic strain vectors...
-              </p>
-            </div>
-
-            <div className="space-y-2 text-left bg-[#f7f9fd] p-4 rounded-xl text-xs font-mono border border-[#c3c6d8]">
-              <div className={`flex items-center gap-2 ${analysisStep >= 1 ? 'text-[#004ccd] font-bold' : 'text-[#737687]'}`}>
-                <CheckCircle2 className="w-4 h-4" /> 1. Normalizing 60fps frame rate
-              </div>
-              <div className={`flex items-center gap-2 ${analysisStep >= 2 ? 'text-[#004ccd] font-bold' : 'text-[#737687]'}`}>
-                <CheckCircle2 className="w-4 h-4" /> 2. Keypoint tracking: Ankle, Knee, Hip
-              </div>
-              <div className={`flex items-center gap-2 ${analysisStep >= 3 ? 'text-[#004ccd] font-bold' : 'text-[#737687]'}`}>
-                <CheckCircle2 className="w-4 h-4" /> 3. Estimating ground reaction forces
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Using Global Upload Progress Widget instead of full screen modal */}
 
       {/* Analysis Done Confirmation Banner */}
       {analysisDone && (

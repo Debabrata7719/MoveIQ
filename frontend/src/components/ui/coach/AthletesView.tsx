@@ -91,7 +91,7 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
     if (!histories[athleteId]) {
       setLoadingHistoryId(athleteId);
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/coach/athletes/${athleteId}/history`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -109,7 +109,7 @@ export const AthletesView: React.FC<AthletesViewProps> = ({
 
   const handleDownloadSessionReport = async (sessionId: string, videoName: string) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sessions/${sessionId}/report/download`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
