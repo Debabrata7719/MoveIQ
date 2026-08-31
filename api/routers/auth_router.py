@@ -307,7 +307,7 @@ def google_login(role: str = "athlete"):
 
 @router.get("/google/callback")
 @google_auth_router.get("/auth/google/callback")
-async def google_callback(code: str = None, state: str = None, error: str = None):
+async def google_callback(request: Request, code: str = None, state: str = None, error: str = None):
     if error or not code:
         return RedirectResponse(url=f"{settings.FRONTEND_URL}?error=google_auth_failed")
     
@@ -384,6 +384,32 @@ async def google_callback(code: str = None, state: str = None, error: str = None
         "coach_code": full_user.get("coach_code")
     }
     jwt_token = create_access_token(data={"sub": str(user_id), "email": email, "roles": roles})
+    
+    # Save Session to Redis
+    try:
+        from database.redis_utils import get_redis_client
+        from api.auth.geo_utils import get_country_from_ip
+        r_client = get_redis_client()
+        session_key = f"session:{jwt_token}"
+        
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        country = get_country_from_ip(client_ip)
+        
+        session_payload = {
+            "user_id": user_id,
+            "email": email,
+            "roles": roles,
+            "ip": client_ip,
+            "user_agent": user_agent,
+            "country": country,
+            "remember_me": True
+        }
+        
+        ttl = 30 * 24 * 3600 # 30 days for OAuth login
+        r_client.setex(session_key, ttl, json.dumps(session_payload))
+    except Exception as e:
+        print(f"Redis session storage failed for Google Login: {e}")
     
     user_json = urllib.parse.quote(json.dumps(user_payload))
     redirect_url = f"{settings.FRONTEND_URL}?token={jwt_token}&user={user_json}"
