@@ -120,3 +120,6 @@ volumes:
   temp_uploads:
     driver: local
 
+  # Caddy persistent storage for SSL certificates
+  caddy_data:
+  caddy_config:
