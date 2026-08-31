@@ -30,7 +30,7 @@ const PasswordRequirements = ({ password }: { password: string }) => {
 }
 
 interface AuthFormProps {
-  onSuccess: (token: string, user: any) => void;
+  onSuccess: (token: string, user: any, rememberMe?: boolean) => void;
   onBack?: () => void;
   initialMode?: 'login' | 'register';
 }

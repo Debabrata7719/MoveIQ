@@ -11,8 +11,10 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
     Celery task that runs the heavy AI pipeline in the background.
     """
     try:
+        original_url = None
         # If the file path is a Cloudinary URL, download it locally first
         if file_path.startswith("http://") or file_path.startswith("https://"):
+            original_url = file_path
             import requests
             from src.config import RAW_VIDEOS_DIR
             
@@ -36,6 +38,14 @@ def process_video_task(self, file_path: str, athlete_id: str, video_name: str, s
         # Cleanup the temporary video file
         if os.path.exists(file_path):
             os.remove(file_path)
+            
+        # Immediately delete the original video from Cloudinary
+        if original_url:
+            try:
+                from database.cloud_storage import delete_video_by_url
+                delete_video_by_url(original_url)
+            except Exception as cd:
+                logger.error(f"Failed to delete video from Cloudinary after processing: {cd}")
             
         # Send Notifications
         try:

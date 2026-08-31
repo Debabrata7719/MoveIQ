@@ -106,6 +106,27 @@ def delete_all_raw_videos() -> int:
         logger.error(f"Failed to delete raw videos from Cloudinary: {e}")
         return 0
 
+def delete_video_by_url(url: str) -> bool:
+    """Deletes a specific video from Cloudinary given its secure URL."""
+    if not os.getenv("CLOUDINARY_URL") or not url:
+        return False
+        
+    try:
+        # URL format: .../upload/v1234567/sports_injury_raw_videos/filename.mp4
+        if "sports_injury_raw_videos/" in url:
+            parts = url.split("sports_injury_raw_videos/")
+            if len(parts) > 1:
+                filename = parts[1].split(".")[0]
+                public_id = f"sports_injury_raw_videos/{filename}"
+                
+                result = cloudinary.uploader.destroy(public_id, resource_type="video")
+                logger.info(f"Deleted video from Cloudinary: {public_id}, result: {result}")
+                return result.get("result") == "ok"
+    except Exception as e:
+        logger.error(f"Failed to delete video {url} from Cloudinary: {e}")
+        
+    return False
+
 def delete_all_key_moments() -> int:
     """Deletes all images in the sports_injury_key_moments folder."""
     if not os.getenv("CLOUDINARY_URL"):
